@@ -15,3 +15,4 @@ dist
 out/*
 !out/
 !out/openapi-extract-intro-1080p.mp4
+!out/openapi-extract-intro.gif

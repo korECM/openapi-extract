@@ -3,7 +3,7 @@
 [English README](README.md)
 
 <p align="center">
-  <video src="./introduction/out/openapi-extract-intro-1080p.mp4" controls width="100%"></video>
+  <img src="./introduction/out/openapi-extract-intro.gif" alt="openapi-extract 30-second introduction" width="100%">
 </p>
 
 `openapi-extract`는 큰 OpenAPI 3.x 문서에서 필요한 endpoint만 골라 작은 AI-friendly mini spec으로 추출하는 Go TUI/CLI 도구입니다.

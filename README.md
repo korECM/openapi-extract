@@ -3,7 +3,7 @@
 [한국어 README](README.ko.md)
 
 <p align="center">
-  <video src="./introduction/out/openapi-extract-intro-1080p.mp4" controls width="100%"></video>
+  <img src="./introduction/out/openapi-extract-intro.gif" alt="openapi-extract 30-second introduction" width="100%">
 </p>
 
 `openapi-extract` turns a large OpenAPI 3.x document into a small, AI-friendly mini spec for only the endpoints you care about.
