@@ -1,6 +1,6 @@
 {
   "name": "openapi-extract",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Adds an OpenAPI mini-spec extraction skill for AI agents and Codex workflows.",
   "author": {
     "name": "korECM",
