@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/devsisters/openapi-extract/internal/cli"
+	"github.com/korECM/openapi-extract/internal/cli"
 )
 
 func main() {

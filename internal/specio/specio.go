@@ -3,7 +3,10 @@ package specio
 import (
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"sigs.k8s.io/yaml"
@@ -14,11 +17,15 @@ type Loaded struct {
 	Raw map[string]any
 }
 
+var httpClient = &http.Client{Timeout: 30 * time.Second}
+
 func Load(source string, stdin io.Reader) (*Loaded, error) {
 	var data []byte
 	var err error
 	if source == "-" {
 		data, err = io.ReadAll(stdin)
+	} else if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
+		data, err = readURL(source)
 	} else {
 		data, err = os.ReadFile(source)
 	}
@@ -49,4 +56,17 @@ func Load(source string, stdin io.Reader) (*Loaded, error) {
 	}
 
 	return &Loaded{Doc: doc, Raw: raw}, nil
+}
+
+func readURL(source string) ([]byte, error) {
+	resp, err := httpClient.Get(source)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("unexpected HTTP status %s", resp.Status)
+	}
+	return io.ReadAll(resp.Body)
 }

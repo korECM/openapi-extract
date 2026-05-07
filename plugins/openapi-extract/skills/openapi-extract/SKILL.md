@@ -7,11 +7,17 @@ description: Use when an AI agent needs a small OpenAPI 3.x mini spec for select
 
 Use the `openapi-extract` CLI when a task needs a compact OpenAPI spec for a few endpoints.
 
+Install the CLI if it is missing:
+
+```bash
+go install github.com/korECM/openapi-extract@latest
+```
+
 Do not read a large OpenAPI file directly unless the user explicitly asks. Prefer the two-step agent flow:
 
 ```bash
-openapi-extract list <openapi.yaml|-> --format json
-openapi-extract extract <openapi.yaml|-> --id '<operation-id>' --stdout
+openapi-extract list <openapi.yaml|url|-> --format json
+openapi-extract extract <openapi.yaml|url|-> --id '<operation-id>' --stdout
 ```
 
 If `openapi-extract` is not on `PATH` and you are inside this repository, use:
@@ -35,6 +41,7 @@ List operations:
 
 ```bash
 openapi-extract list ./openapi.yaml --format json
+openapi-extract list https://docs.example.com/openapi.yaml --format json
 cat openapi.yaml | openapi-extract list - --format json
 ```
 

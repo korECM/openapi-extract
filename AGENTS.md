@@ -2,11 +2,19 @@
 
 This repository provides `openapi-extract`, a Go CLI/TUI for creating small OpenAPI 3.x mini specs from selected operations.
 
+Install the CLI with:
+
+```bash
+go install github.com/korECM/openapi-extract@latest
+```
+
+Ensure `$(go env GOPATH)/bin` is on `PATH`.
+
 When an agent needs OpenAPI context, prefer this flow instead of reading a large OpenAPI document directly:
 
 ```bash
-openapi-extract list <openapi.yaml|-> --format json
-openapi-extract extract <openapi.yaml|-> --id '<operation-id>' --stdout
+openapi-extract list <openapi.yaml|url|-> --format json
+openapi-extract extract <openapi.yaml|url|-> --id '<operation-id>' --stdout
 ```
 
 If the binary is not installed and you are working from this repository, use:

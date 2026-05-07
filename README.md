@@ -1,5 +1,7 @@
 # openapi-extract
 
+[한국어 README](README.ko.md)
+
 `openapi-extract` is a Go TUI and CLI for turning a large OpenAPI 3.x document into a small, AI-friendly mini spec.
 
 It is built for two workflows:
@@ -8,6 +10,20 @@ It is built for two workflows:
 - AI agents and scripts can list operation IDs first, then extract only the operations they need without reading the full OpenAPI file directly.
 
 ## Install / Build
+
+Install the latest released commit:
+
+```bash
+go install github.com/korECM/openapi-extract@latest
+```
+
+Make sure your Go bin directory is on `PATH`:
+
+```bash
+export PATH="$(go env GOPATH)/bin:$PATH"
+```
+
+Build from a local checkout:
 
 ```bash
 go build ./...
@@ -18,6 +34,7 @@ go build -o openapi-extract .
 
 ```bash
 openapi-extract ./openapi.yaml
+openapi-extract https://docs.example.com/openapi.yaml
 cat openapi.yaml | openapi-extract -
 ```
 
@@ -37,6 +54,7 @@ Use `list` first. The agent gets a compact operation catalog and does not need t
 
 ```bash
 openapi-extract list /Users/devsisters/Downloads/scalar-galaxy.yaml --format json
+openapi-extract list https://docs.example.com/openapi.yaml --format json
 ```
 
 Example text catalog:
@@ -90,13 +108,20 @@ See [docs/agent-integrations.md](docs/agent-integrations.md) for install and usa
 List operations:
 
 ```bash
-openapi-extract list <openapi.yaml|-> [--format text|json]
+openapi-extract list <openapi.yaml|url|-> [--format text|json] [--columns id,method,path,summary] [--no-header] [--no-color]
+```
+
+Text output supports selectable columns:
+
+```bash
+openapi-extract list ./openapi.yaml --columns method,path,tags,operationId
+openapi-extract list ./openapi.yaml --columns all
 ```
 
 Extract selected operations:
 
 ```bash
-openapi-extract extract <openapi.yaml|-> \
+openapi-extract extract <openapi.yaml|url|-> \
   (--id ID | --select 'METHOD /path') \
   (--stdout | --copy | --output mini.openapi.yaml) \
   [--format yaml|json]
@@ -105,6 +130,7 @@ openapi-extract extract <openapi.yaml|-> \
 Input sources:
 
 - Local file: `openapi-extract list ./openapi.yaml`
+- URL: `openapi-extract list https://docs.example.com/openapi.yaml --format json`
 - stdin: `cat openapi.yaml | openapi-extract list - --format json`
 
 Output targets:
@@ -124,130 +150,3 @@ The mini spec keeps only the selected operations and the OpenAPI pieces needed t
 - root `openapi`, `info`, `servers`, `security`, `tags`, and `externalDocs` where applicable
 
 The extractor removes unrelated paths and unused components, which keeps the output smaller for LLM prompts.
-
-## Korean / 한국어
-
-`openapi-extract`는 큰 OpenAPI 3.x 문서에서 필요한 endpoint만 골라 작은 AI-friendly spec으로 추출하는 Go TUI/CLI 도구입니다.
-
-두 가지 사용 흐름을 지원합니다.
-
-- 사람이 쓸 때는 TUI에서 operation을 검색하고 여러 개 선택한 뒤, 클립보드로 복사하거나 파일로 저장합니다.
-- AI agent나 스크립트가 쓸 때는 먼저 operation catalog를 조회하고, 필요한 operation id만 넘겨 mini spec을 추출합니다.
-
-## 빌드
-
-```bash
-go build ./...
-go build -o openapi-extract .
-```
-
-## TUI 사용법
-
-```bash
-openapi-extract ./openapi.yaml
-cat openapi.yaml | openapi-extract -
-```
-
-단축키:
-
-- `j/k` 또는 방향키: 이동
-- `/`: method, path, tag, summary, operationId 검색
-- `space`: operation 선택/해제
-- `c`: 선택한 operation의 mini spec을 클립보드로 복사
-- `s`: 선택한 operation의 mini spec을 파일로 저장
-- `y`: 선택한 operation의 mini spec을 stdout으로 출력하고 종료
-- `q` 또는 `esc`: 종료
-
-## AI Agent Workflow
-
-agent는 OpenAPI 원문 전체를 읽기보다 `list`로 작은 catalog를 먼저 받는 흐름을 권장합니다.
-
-```bash
-openapi-extract list /Users/devsisters/Downloads/scalar-galaxy.yaml --format json
-```
-
-예시 text catalog:
-
-```text
-post_/auth/token              POST /auth/token - Get a token
-get_/me                       GET /me - Get authenticated user
-get_/planets                  GET /planets - Get all planets
-get_/planets/{planetId}       GET /planets/{planetId} - Get a planet
-```
-
-그 다음 `id`로 추출합니다.
-
-```bash
-openapi-extract extract /Users/devsisters/Downloads/scalar-galaxy.yaml \
-  --id 'get_/planets/{planetId}' \
-  --stdout
-```
-
-여러 operation도 한 번에 추출할 수 있습니다.
-
-```bash
-openapi-extract extract /Users/devsisters/Downloads/scalar-galaxy.yaml \
-  --id 'get_/planets' \
-  --id 'get_/planets/{planetId}' \
-  --stdout
-```
-
-사람이 직접 입력하기 쉬운 selector도 지원합니다.
-
-```bash
-openapi-extract extract /Users/devsisters/Downloads/scalar-galaxy.yaml \
-  --select 'GET /planets/{planetId}' \
-  --stdout
-```
-
-## Agent 연동
-
-여러 coding agent가 같은 추출 흐름을 쓰도록 plugin/rule/skill 파일을 포함했습니다.
-
-- Codex: `plugins/openapi-extract/.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`
-- Claude Code: `plugins/openapi-extract/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`
-- Cursor: `.cursor/rules/openapi-extract.mdc`
-- OpenCode와 범용 agent: `AGENTS.md`
-- 공통 skill: `plugins/openapi-extract/skills/openapi-extract/SKILL.md`
-
-설치와 사용 예시는 [docs/agent-integrations.md](docs/agent-integrations.md)를 참고하세요.
-
-## CLI 레퍼런스
-
-operation 목록 출력:
-
-```bash
-openapi-extract list <openapi.yaml|-> [--format text|json]
-```
-
-선택한 operation 추출:
-
-```bash
-openapi-extract extract <openapi.yaml|-> \
-  (--id ID | --select 'METHOD /path') \
-  (--stdout | --copy | --output mini.openapi.yaml) \
-  [--format yaml|json]
-```
-
-입력:
-
-- 로컬 파일: `openapi-extract list ./openapi.yaml`
-- stdin: `cat openapi.yaml | openapi-extract list - --format json`
-
-출력:
-
-- `--stdout`: mini spec을 터미널에 출력
-- `--copy`: mini spec을 클립보드에 복사
-- `--output <path>`: mini spec을 파일로 저장
-
-## 추출 범위
-
-mini spec에는 선택한 operation을 쓰는 데 필요한 최소 항목만 남깁니다.
-
-- 선택한 `paths`와 HTTP method
-- 선택한 path의 path-level parameter
-- 선택 operation에서 재귀적으로 도달 가능한 `$ref` components
-- 참조되는 `securitySchemes`
-- 필요한 root `openapi`, `info`, `servers`, `security`, `tags`, `externalDocs`
-
-관련 없는 path와 사용하지 않는 component를 제거해서 LLM prompt에 넣기 좋은 작은 spec을 만듭니다.

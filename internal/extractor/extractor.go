@@ -5,28 +5,30 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/devsisters/openapi-extract/internal/catalog"
+	"github.com/korECM/openapi-extract/internal/catalog"
+	"github.com/korECM/openapi-extract/internal/ordered"
 )
 
-func Extract(raw map[string]any, selected []catalog.Operation) (map[string]any, error) {
+func Extract(raw map[string]any, selected []catalog.Operation) (*ordered.Map, error) {
 	if len(selected) == 0 {
 		return nil, fmt.Errorf("no operations selected")
 	}
 
-	mini := map[string]any{}
+	mini := ordered.New()
 	copyRoot(mini, raw, "openapi")
 	copyRoot(mini, raw, "info")
 	copyRoot(mini, raw, "jsonSchemaDialect")
-	copyRoot(mini, raw, "externalDocs")
 	copyRoot(mini, raw, "servers")
 	copyRoot(mini, raw, "security")
+	copyRoot(mini, raw, "tags")
+	copyRoot(mini, raw, "externalDocs")
 
 	paths, ok := asMap(raw["paths"])
 	if !ok {
 		return nil, fmt.Errorf("OpenAPI document has no paths object")
 	}
 
-	miniPaths := map[string]any{}
+	miniPaths := ordered.New()
 	for _, op := range selected {
 		pathItem, ok := asMap(paths[op.Path])
 		if !ok {
@@ -38,19 +40,22 @@ func Extract(raw map[string]any, selected []catalog.Operation) (map[string]any, 
 			return nil, fmt.Errorf("operation not found: %s", op.ID)
 		}
 
-		target, _ := asMap(miniPaths[op.Path])
+		var target *ordered.Map
+		if existing, ok := miniPaths.Get(op.Path); ok {
+			target, _ = existing.(*ordered.Map)
+		}
 		if target == nil {
-			target = map[string]any{}
-			miniPaths[op.Path] = target
+			target = ordered.New()
+			miniPaths.Set(op.Path, target)
 		}
 		for _, field := range []string{"summary", "description", "servers", "parameters"} {
 			if value, exists := pathItem[field]; exists {
-				target[field] = value
+				target.Set(field, value)
 			}
 		}
-		target[method] = operation
+		target.Set(method, operation)
 	}
-	mini["paths"] = miniPaths
+	mini.Set("paths", miniPaths)
 
 	filterTags(mini, raw, selected)
 	if err := includeReachableComponents(mini, raw); err != nil {
@@ -59,13 +64,13 @@ func Extract(raw map[string]any, selected []catalog.Operation) (map[string]any, 
 	return mini, nil
 }
 
-func copyRoot(dst, src map[string]any, key string) {
+func copyRoot(dst *ordered.Map, src map[string]any, key string) {
 	if value, ok := src[key]; ok {
-		dst[key] = value
+		dst.Set(key, value)
 	}
 }
 
-func filterTags(mini, raw map[string]any, selected []catalog.Operation) {
+func filterTags(mini *ordered.Map, raw map[string]any, selected []catalog.Operation) {
 	rawTags, ok := raw["tags"].([]any)
 	if !ok {
 		return
@@ -91,16 +96,16 @@ func filterTags(mini, raw map[string]any, selected []catalog.Operation) {
 		}
 	}
 	if len(tags) > 0 {
-		mini["tags"] = tags
+		mini.Set("tags", tags)
 	}
 }
 
-func includeReachableComponents(mini, raw map[string]any) error {
+func includeReachableComponents(mini *ordered.Map, raw map[string]any) error {
 	rawComponents, ok := asMap(raw["components"])
 	if !ok {
 		return nil
 	}
-	miniComponents := map[string]any{}
+	miniComponents := ordered.New()
 	queue := refsIn(mini)
 	seen := map[string]bool{}
 	if err := includeSecuritySchemes(miniComponents, rawComponents, mini); err != nil {
@@ -128,22 +133,25 @@ func includeReachableComponents(mini, raw map[string]any) error {
 			return fmt.Errorf("unresolved reference: %s", ref)
 		}
 
-		targetSection, _ := asMap(miniComponents[section])
-		if targetSection == nil {
-			targetSection = map[string]any{}
-			miniComponents[section] = targetSection
+		var targetSection *ordered.Map
+		if existing, ok := miniComponents.Get(section); ok {
+			targetSection, _ = existing.(*ordered.Map)
 		}
-		targetSection[name] = value
+		if targetSection == nil {
+			targetSection = ordered.New()
+			miniComponents.Set(section, targetSection)
+		}
+		targetSection.Set(name, value)
 		queue = append(queue, refsIn(value)...)
 	}
 
-	if len(miniComponents) > 0 {
-		mini["components"] = sortComponentSections(miniComponents)
+	if miniComponents.Len() > 0 {
+		mini.Set("components", orderComponentSections(miniComponents))
 	}
 	return nil
 }
 
-func includeSecuritySchemes(miniComponents, rawComponents map[string]any, mini map[string]any) error {
+func includeSecuritySchemes(miniComponents *ordered.Map, rawComponents map[string]any, mini *ordered.Map) error {
 	names := securitySchemeNames(mini)
 	if len(names) == 0 {
 		return nil
@@ -152,16 +160,16 @@ func includeSecuritySchemes(miniComponents, rawComponents map[string]any, mini m
 	if !ok {
 		return nil
 	}
-	target := map[string]any{}
+	target := ordered.New()
 	for name := range names {
 		value, ok := rawSchemes[name]
 		if !ok {
 			return fmt.Errorf("unresolved security scheme: %s", name)
 		}
-		target[name] = value
+		target.Set(name, value)
 	}
-	if len(target) > 0 {
-		miniComponents["securitySchemes"] = target
+	if target.Len() > 0 {
+		miniComponents.Set("securitySchemes", target)
 	}
 	return nil
 }
@@ -171,6 +179,16 @@ func securitySchemeNames(value any) map[string]bool {
 	var walk func(any)
 	walk = func(v any) {
 		switch typed := v.(type) {
+		case *ordered.Map:
+			if security, ok := typed.Values["security"]; ok {
+				collectSecurityNames(names, security)
+			}
+			for _, key := range typed.Keys {
+				if key == "security" {
+					continue
+				}
+				walk(typed.Values[key])
+			}
 		case map[string]any:
 			if security, ok := typed["security"]; ok {
 				collectSecurityNames(names, security)
@@ -212,6 +230,13 @@ func refsIn(value any) []string {
 	var walk func(any)
 	walk = func(v any) {
 		switch typed := v.(type) {
+		case *ordered.Map:
+			if ref, ok := typed.Values["$ref"].(string); ok {
+				refs = append(refs, ref)
+			}
+			for _, key := range typed.Keys {
+				walk(typed.Values[key])
+			}
 		case map[string]any:
 			if ref, ok := typed["$ref"].(string); ok {
 				refs = append(refs, ref)
@@ -253,15 +278,35 @@ func asMap(value any) (map[string]any, bool) {
 	return typed, ok
 }
 
-func sortComponentSections(components map[string]any) map[string]any {
-	ordered := map[string]any{}
-	keys := make([]string, 0, len(components))
-	for key := range components {
-		keys = append(keys, key)
+func orderComponentSections(components *ordered.Map) *ordered.Map {
+	result := ordered.New()
+	preferred := []string{
+		"schemas",
+		"responses",
+		"parameters",
+		"examples",
+		"requestBodies",
+		"headers",
+		"securitySchemes",
+		"links",
+		"callbacks",
+	}
+	seen := map[string]bool{}
+	for _, key := range preferred {
+		if value, ok := components.Get(key); ok {
+			result.Set(key, value)
+			seen[key] = true
+		}
+	}
+	keys := make([]string, 0)
+	for _, key := range components.Keys {
+		if !seen[key] {
+			keys = append(keys, key)
+		}
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		ordered[key] = components[key]
+		result.Set(key, components.Values[key])
 	}
-	return ordered
+	return result
 }

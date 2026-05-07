@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/devsisters/openapi-extract/internal/specio"
+	"github.com/korECM/openapi-extract/internal/specio"
 )
 
 func TestBuildCatalog(t *testing.T) {

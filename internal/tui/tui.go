@@ -7,9 +7,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/devsisters/openapi-extract/internal/catalog"
-	"github.com/devsisters/openapi-extract/internal/extractor"
-	"github.com/devsisters/openapi-extract/internal/output"
+	"github.com/korECM/openapi-extract/internal/catalog"
+	"github.com/korECM/openapi-extract/internal/extractor"
+	"github.com/korECM/openapi-extract/internal/output"
 )
 
 type mode int
@@ -253,23 +253,53 @@ func (m model) View() string {
 		if i == m.cursor {
 			cursor = ">"
 		}
-		check := " "
+		selected := false
+		check := "○"
 		if _, ok := m.selected[op.ID]; ok {
+			selected = true
 			check = "x"
 		}
-		line := fmt.Sprintf("%s [%s] %-6s %s", cursor, check, op.Method, op.Path)
+		method := methodStyle(op.Method).Render(fmt.Sprintf("%-6s", op.Method))
+		pathStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
+		metaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+		selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true)
+		cursorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("229")).Bold(true)
+		if selected {
+			pathStyle = pathStyle.Copy().Bold(true)
+			metaStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("121"))
+			check = selectedStyle.Render("●")
+		} else {
+			check = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(check)
+		}
+		line := fmt.Sprintf("%s %s %s %s", cursor, check, method, pathStyle.Render(op.Path))
 		if op.Summary != "" {
-			line += " - " + op.Summary
+			line += metaStyle.Render(" - " + op.Summary)
 		}
 		if i == m.cursor {
-			line = lipgloss.NewStyle().Foreground(lipgloss.Color("229")).Render(line)
+			line = cursorStyle.Render(line)
 		}
 		fmt.Fprintln(&b, line)
 		if len(op.Tags) > 0 || op.OperationID != "" {
-			fmt.Fprintf(&b, "      %s %s\n", strings.Join(op.Tags, ","), op.OperationID)
+			meta := fmt.Sprintf("      %s %s", strings.Join(op.Tags, ","), op.OperationID)
+			fmt.Fprintln(&b, metaStyle.Render(meta))
 		}
 	}
 
 	fmt.Fprintf(&b, "\n%s\n", lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Render(m.message))
 	return b.String()
+}
+
+func methodStyle(method string) lipgloss.Style {
+	switch method {
+	case "GET":
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42"))
+	case "POST":
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
+	case "PUT", "PATCH":
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
+	case "DELETE":
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196"))
+	default:
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("147"))
+	}
 }

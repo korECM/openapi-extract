@@ -6,9 +6,24 @@ This guide explains how to use `openapi-extract` from Codex, Claude Code, Cursor
 
 Agents should avoid reading large OpenAPI documents directly. First ask the CLI for a compact operation catalog, then extract by operation id.
 
+Install:
+
+```bash
+go install github.com/korECM/openapi-extract@latest
+```
+
+Ensure `$(go env GOPATH)/bin` is on `PATH`, then run:
+
 ```bash
 openapi-extract list /Users/devsisters/Downloads/scalar-galaxy.yaml --format json
 openapi-extract extract /Users/devsisters/Downloads/scalar-galaxy.yaml --id 'get_/planets/{planetId}' --stdout
+openapi-extract list https://docs.example.com/openapi.yaml --format json
+```
+
+For human-readable discovery, use selectable text columns:
+
+```bash
+openapi-extract list ./openapi.yaml --columns method,path,tags,operationId
 ```
 
 If the binary is not installed and the agent is inside this repository:
@@ -94,11 +109,20 @@ Use openapi-extract list <spec> --format json first. Then use openapi-extract ex
 
 `openapi-extract`는 agent가 큰 OpenAPI 파일 전체를 읽지 않고 필요한 endpoint만 작은 spec으로 뽑기 위한 도구입니다.
 
+설치:
+
+```bash
+go install github.com/korECM/openapi-extract@latest
+```
+
+`$(go env GOPATH)/bin`이 `PATH`에 들어 있어야 합니다.
+
 권장 흐름:
 
 ```bash
 openapi-extract list /Users/devsisters/Downloads/scalar-galaxy.yaml --format json
 openapi-extract extract /Users/devsisters/Downloads/scalar-galaxy.yaml --id 'get_/planets/{planetId}' --stdout
+openapi-extract list https://docs.example.com/openapi.yaml --format json
 ```
 
 repo 안에서 binary가 아직 설치되지 않았다면:

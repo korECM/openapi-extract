@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/devsisters/openapi-extract/internal/catalog"
-	"github.com/devsisters/openapi-extract/internal/specio"
+	"github.com/korECM/openapi-extract/internal/catalog"
+	"github.com/korECM/openapi-extract/internal/specio"
 )
 
 func TestExtractIncludesOnlySelectedOperationAndReachableRefs(t *testing.T) {
@@ -87,30 +87,30 @@ components:
 	if err != nil {
 		t.Fatal(err)
 	}
-	paths := mini["paths"].(map[string]any)
-	if len(paths) != 1 {
-		t.Fatalf("len(paths) = %d, want 1", len(paths))
+	paths := mustOrderedMap(t, mini, "paths")
+	if paths.Len() != 1 {
+		t.Fatalf("len(paths) = %d, want 1", paths.Len())
 	}
-	playerPath := paths["/players/{player_id}"].(map[string]any)
-	if _, ok := playerPath["get"]; !ok {
+	playerPath := mustOrderedMap(t, paths, "/players/{player_id}")
+	if _, ok := playerPath.Get("get"); !ok {
 		t.Fatal("selected get operation missing")
 	}
-	if _, ok := playerPath["delete"]; ok {
+	if _, ok := playerPath.Get("delete"); ok {
 		t.Fatal("unselected delete operation included")
 	}
 
-	components := mini["components"].(map[string]any)
-	schemas := components["schemas"].(map[string]any)
+	components := mustOrderedMap(t, mini, "components")
+	schemas := mustOrderedMap(t, components, "schemas")
 	for _, name := range []string{"Player", "Profile", "Error"} {
-		if _, ok := schemas[name]; !ok {
+		if _, ok := schemas.Get(name); !ok {
 			t.Fatalf("reachable schema %s missing", name)
 		}
 	}
-	if _, ok := schemas["Unused"]; ok {
+	if _, ok := schemas.Get("Unused"); ok {
 		t.Fatal("unused schema included")
 	}
-	parameters := components["parameters"].(map[string]any)
-	if _, ok := parameters["PlayerID"]; !ok {
+	parameters := mustOrderedMap(t, components, "parameters")
+	if _, ok := parameters.Get("PlayerID"); !ok {
 		t.Fatal("path-level parameter ref missing")
 	}
 }
@@ -153,12 +153,30 @@ components:
 	if err != nil {
 		t.Fatal(err)
 	}
-	components := mini["components"].(map[string]any)
-	schemes := components["securitySchemes"].(map[string]any)
-	if _, ok := schemes["bearerAuth"]; !ok {
+	components := mustOrderedMap(t, mini, "components")
+	schemes := mustOrderedMap(t, components, "securitySchemes")
+	if _, ok := schemes.Get("bearerAuth"); !ok {
 		t.Fatal("referenced security scheme missing")
 	}
-	if _, ok := schemes["unusedKey"]; ok {
+	if _, ok := schemes.Get("unusedKey"); ok {
 		t.Fatal("unused security scheme included")
 	}
+}
+
+type orderedGetter interface {
+	Get(string) (any, bool)
+	Len() int
+}
+
+func mustOrderedMap(t *testing.T, parent orderedGetter, key string) orderedGetter {
+	t.Helper()
+	value, ok := parent.Get(key)
+	if !ok {
+		t.Fatalf("missing key %s", key)
+	}
+	child, ok := value.(orderedGetter)
+	if !ok {
+		t.Fatalf("key %s is %T, want ordered map", key, value)
+	}
+	return child
 }

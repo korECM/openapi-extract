@@ -6,11 +6,17 @@ alwaysApply: false
 
 When a task needs OpenAPI context, do not load a large OpenAPI file directly if `openapi-extract` can be used.
 
+Install the CLI if needed:
+
+```bash
+go install github.com/korECM/openapi-extract@latest
+```
+
 Preferred flow:
 
 ```bash
-openapi-extract list <openapi.yaml|-> --format json
-openapi-extract extract <openapi.yaml|-> --id '<operation-id>' --stdout
+openapi-extract list <openapi.yaml|url|-> --format json
+openapi-extract extract <openapi.yaml|url|-> --id '<operation-id>' --stdout
 ```
 
 If the CLI is not installed but the current workspace is the `openapi-extract` repository, use `go run .`:

@@ -4,13 +4,15 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
-	"github.com/devsisters/openapi-extract/internal/catalog"
-	"github.com/devsisters/openapi-extract/internal/extractor"
-	"github.com/devsisters/openapi-extract/internal/output"
-	"github.com/devsisters/openapi-extract/internal/specio"
-	"github.com/devsisters/openapi-extract/internal/tui"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/korECM/openapi-extract/internal/catalog"
+	"github.com/korECM/openapi-extract/internal/extractor"
+	"github.com/korECM/openapi-extract/internal/output"
+	"github.com/korECM/openapi-extract/internal/specio"
+	"github.com/korECM/openapi-extract/internal/tui"
 )
 
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -35,12 +37,15 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 func runList(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	source, flagArgs, ok := splitSource(args)
 	if !ok {
-		fmt.Fprintln(stderr, "usage: openapi-extract list <openapi.yaml|-> [--format text|json]")
+		fmt.Fprintln(stderr, "usage: openapi-extract list <openapi.yaml|url|-> [--format text|json]")
 		return 2
 	}
 	fs := flag.NewFlagSet("list", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	format := fs.String("format", "text", "output format: text or json")
+	columnsFlag := fs.String("columns", "id,method,path,summary", "comma-separated text columns: id,method,path,operationId,summary,tags or all")
+	noHeader := fs.Bool("no-header", false, "hide the header row in text output")
+	noColor := fs.Bool("no-color", false, "disable ANSI colors in text output")
 	if err := fs.Parse(flagArgs); err != nil {
 		return 2
 	}
@@ -64,13 +69,12 @@ func runList(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		stdout.Write(data)
 	case "text", "":
-		for _, op := range ops {
-			summary := op.Summary
-			if summary != "" {
-				summary = " - " + summary
-			}
-			fmt.Fprintf(stdout, "%s\t%s %s%s\n", op.ID, op.Method, op.Path, summary)
+		columns, err := parseColumns(*columnsFlag)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
 		}
+		writeTextCatalog(stdout, ops, columns, !*noHeader, shouldColor(stdout, *noColor))
 	default:
 		fmt.Fprintf(stderr, "unsupported format: %s\n", *format)
 		return 2
@@ -78,10 +82,163 @@ func runList(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func writeTextCatalog(w io.Writer, ops []catalog.Operation, columns []listColumn, header bool, color bool) {
+	widths := make([]int, len(columns))
+	for i, column := range columns {
+		widths[i] = len(column.Header)
+	}
+	for _, op := range ops {
+		for i, column := range columns {
+			widths[i] = max(widths[i], len(column.Value(op)))
+		}
+	}
+
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("250"))
+	idStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+	pathStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
+	summaryStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+
+	if header {
+		cells := make([]string, 0, len(columns))
+		for i, column := range columns {
+			cell := column.Header
+			if i < len(columns)-1 {
+				cell = padRight(cell, widths[i])
+			}
+			if color {
+				cell = headerStyle.Render(cell)
+			}
+			cells = append(cells, cell)
+		}
+		fmt.Fprintln(w, strings.Join(cells, "  "))
+	}
+
+	for _, op := range ops {
+		cells := make([]string, 0, len(columns))
+		for i, column := range columns {
+			value := column.Value(op)
+			if i < len(columns)-1 {
+				value = padRight(value, widths[i])
+			}
+			if color {
+				switch column.Name {
+				case "id":
+					value = idStyle.Render(value)
+				case "method":
+					value = methodStyle(op.Method).Render(value)
+				case "path":
+					value = pathStyle.Render(value)
+				case "summary", "operationId", "tags":
+					value = summaryStyle.Render(value)
+				}
+			}
+			cells = append(cells, value)
+		}
+		fmt.Fprintln(w, strings.Join(cells, "  "))
+	}
+}
+
+type listColumn struct {
+	Name   string
+	Header string
+	Value  func(catalog.Operation) string
+}
+
+func parseColumns(value string) ([]listColumn, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, fmt.Errorf("missing columns")
+	}
+	if value == "all" {
+		value = "id,method,path,operationId,summary,tags"
+	}
+	parts := strings.Split(value, ",")
+	columns := make([]listColumn, 0, len(parts))
+	for _, part := range parts {
+		name := strings.TrimSpace(part)
+		column, ok := knownListColumns[name]
+		if !ok {
+			return nil, fmt.Errorf("unknown column %q; available columns: id,method,path,operationId,summary,tags", name)
+		}
+		columns = append(columns, column)
+	}
+	return columns, nil
+}
+
+var knownListColumns = map[string]listColumn{
+	"id": {
+		Name:   "id",
+		Header: "ID",
+		Value:  func(op catalog.Operation) string { return op.ID },
+	},
+	"method": {
+		Name:   "method",
+		Header: "METHOD",
+		Value:  func(op catalog.Operation) string { return op.Method },
+	},
+	"path": {
+		Name:   "path",
+		Header: "PATH",
+		Value:  func(op catalog.Operation) string { return op.Path },
+	},
+	"operationId": {
+		Name:   "operationId",
+		Header: "OPERATION ID",
+		Value:  func(op catalog.Operation) string { return op.OperationID },
+	},
+	"summary": {
+		Name:   "summary",
+		Header: "SUMMARY",
+		Value:  func(op catalog.Operation) string { return op.Summary },
+	},
+	"tags": {
+		Name:   "tags",
+		Header: "TAGS",
+		Value:  func(op catalog.Operation) string { return strings.Join(op.Tags, ",") },
+	},
+}
+
+func padRight(value string, width int) string {
+	if len(value) >= width {
+		return value
+	}
+	return value + strings.Repeat(" ", width-len(value))
+}
+
+func methodStyle(method string) lipgloss.Style {
+	switch method {
+	case "GET":
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42"))
+	case "POST":
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
+	case "PUT", "PATCH":
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
+	case "DELETE":
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196"))
+	default:
+		return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("147"))
+	}
+}
+
+func shouldColor(w io.Writer, noColor bool) bool {
+	if noColor || os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	file, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
+}
+
 func runExtract(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	source, flagArgs, ok := splitSource(args)
 	if !ok {
-		fmt.Fprintln(stderr, "usage: openapi-extract extract <openapi.yaml|-> (--id ID|--select 'METHOD /path') (--stdout|--copy|--output file)")
+		fmt.Fprintln(stderr, "usage: openapi-extract extract <openapi.yaml|url|-> (--id ID|--select 'METHOD /path') (--stdout|--copy|--output file)")
 		return 2
 	}
 	fs := flag.NewFlagSet("extract", flag.ContinueOnError)
@@ -170,9 +327,9 @@ func runTUI(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 func usage(w io.Writer) {
 	fmt.Fprintln(w, strings.TrimSpace(`
 Usage:
-  openapi-extract <openapi.yaml|->                 Open interactive TUI
-  openapi-extract list <openapi.yaml|->            Print operation catalog
-  openapi-extract extract <openapi.yaml|->          Extract selected operations
+  openapi-extract <openapi.yaml|url|->             Open interactive TUI
+  openapi-extract list <openapi.yaml|url|->        Print operation catalog
+  openapi-extract extract <openapi.yaml|url|->      Extract selected operations
 
 AI-friendly flow:
   openapi-extract list openapi.yaml --format json
