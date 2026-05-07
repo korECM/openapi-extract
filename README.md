@@ -73,6 +73,18 @@ openapi-extract extract /Users/devsisters/Downloads/scalar-galaxy.yaml \
   --stdout
 ```
 
+## Agent Integrations
+
+This repository includes reusable instructions and plugin metadata for multiple coding agents.
+
+- Codex: `plugins/openapi-extract/.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`
+- Claude Code: `plugins/openapi-extract/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`
+- Cursor: `.cursor/rules/openapi-extract.mdc`
+- OpenCode and generic agents: `AGENTS.md`
+- Shared skill: `plugins/openapi-extract/skills/openapi-extract/SKILL.md`
+
+See [docs/agent-integrations.md](docs/agent-integrations.md) for install and usage details.
+
 ## CLI Reference
 
 List operations:
@@ -187,6 +199,18 @@ openapi-extract extract /Users/devsisters/Downloads/scalar-galaxy.yaml \
   --select 'GET /planets/{planetId}' \
   --stdout
 ```
+
+## Agent 연동
+
+여러 coding agent가 같은 추출 흐름을 쓰도록 plugin/rule/skill 파일을 포함했습니다.
+
+- Codex: `plugins/openapi-extract/.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`
+- Claude Code: `plugins/openapi-extract/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`
+- Cursor: `.cursor/rules/openapi-extract.mdc`
+- OpenCode와 범용 agent: `AGENTS.md`
+- 공통 skill: `plugins/openapi-extract/skills/openapi-extract/SKILL.md`
+
+설치와 사용 예시는 [docs/agent-integrations.md](docs/agent-integrations.md)를 참고하세요.
 
 ## CLI 레퍼런스
 

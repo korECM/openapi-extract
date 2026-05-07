@@ -1,0 +1,12 @@
+{
+  "name": "openapi-extract",
+  "description": "Adds an OpenAPI mini-spec extraction skill for AI agents and Claude Code workflows.",
+  "version": "0.1.0",
+  "author": {
+    "name": "korECM"
+  },
+  "repository": "https://github.com/korECM/openapi-extract",
+  "license": "MIT",
+  "keywords": ["openapi", "api", "agent", "skill", "llm"],
+  "skills": "./skills/"
+}

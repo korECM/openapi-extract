@@ -1,0 +1,23 @@
+---
+description: Use openapi-extract to create small OpenAPI specs for AI coding tasks
+globs: "**/*"
+alwaysApply: false
+---
+
+When a task needs OpenAPI context, do not load a large OpenAPI file directly if `openapi-extract` can be used.
+
+Preferred flow:
+
+```bash
+openapi-extract list <openapi.yaml|-> --format json
+openapi-extract extract <openapi.yaml|-> --id '<operation-id>' --stdout
+```
+
+If the CLI is not installed but the current workspace is the `openapi-extract` repository, use `go run .`:
+
+```bash
+go run . list <openapi.yaml|-> --format json
+go run . extract <openapi.yaml|-> --id '<operation-id>' --stdout
+```
+
+Use `--stdout` for agent workflows, `--copy` for interactive user workflows, and `--output <file>` when the user asks for a saved mini spec.

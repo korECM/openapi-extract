@@ -1,0 +1,28 @@
+{
+  "name": "openapi-extract",
+  "version": "0.1.0",
+  "description": "Adds an OpenAPI mini-spec extraction skill for AI agents and Codex workflows.",
+  "author": {
+    "name": "korECM",
+    "url": "https://github.com/korECM"
+  },
+  "repository": "https://github.com/korECM/openapi-extract",
+  "license": "MIT",
+  "keywords": ["openapi", "api", "agent", "skill", "llm"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "OpenAPI Extract",
+    "shortDescription": "Extract small OpenAPI specs for AI agents.",
+    "longDescription": "Use openapi-extract to list OpenAPI operations and extract compact mini specs for selected endpoints without loading a full OpenAPI document into context.",
+    "developerName": "korECM",
+    "category": "Productivity",
+    "capabilities": ["CLI", "OpenAPI", "Agent Workflow"],
+    "websiteURL": "https://github.com/korECM/openapi-extract",
+    "defaultPrompt": [
+      "List operation ids from this OpenAPI file.",
+      "Extract a mini spec for this endpoint.",
+      "Create an AI-friendly OpenAPI slice."
+    ],
+    "brandColor": "#2563EB"
+  }
+}
