@@ -6,8 +6,6 @@
   <video src="./introduction/out/openapi-extract-intro-1080p.mp4" controls width="100%"></video>
 </p>
 
-[Watch the 30-second introduction video](introduction/out/openapi-extract-intro-1080p.mp4)
-
 `openapi-extract` turns a large OpenAPI 3.x document into a small, AI-friendly mini spec for only the endpoints you care about.
 
 Stop pasting a whole API contract into an LLM when you only need `GET /players/{id}`. `openapi-extract` lists operations, lets you pick the relevant ones, and outputs a valid mini OpenAPI spec with just the selected paths plus the `$ref` components they need.
