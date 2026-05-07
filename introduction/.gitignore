@@ -1,0 +1,17 @@
+node_modules
+dist
+.DS_Store
+.env
+.agents/
+.claude/
+.codex/
+.cursor/
+.gemini/
+.github/
+.junie/
+.opencode/
+
+# Keep rendered intermediates out of Git, but commit the README intro video.
+out/*
+!out/
+!out/openapi-extract-intro-1080p.mp4

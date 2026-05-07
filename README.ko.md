@@ -2,6 +2,12 @@
 
 [English README](README.md)
 
+<p align="center">
+  <video src="./introduction/out/openapi-extract-intro-1080p.mp4" controls width="100%"></video>
+</p>
+
+[30초 소개 영상 보기](introduction/out/openapi-extract-intro-1080p.mp4)
+
 `openapi-extract`는 큰 OpenAPI 3.x 문서에서 필요한 endpoint만 골라 작은 AI-friendly mini spec으로 추출하는 Go TUI/CLI 도구입니다.
 
 LLM에게 전체 API 계약을 붙여넣지 않아도 됩니다. 필요한 것이 `GET /players/{id}` 하나라면, operation catalog를 먼저 보고 필요한 operation만 골라 `$ref`까지 살아 있는 작은 OpenAPI spec으로 만들 수 있습니다.
