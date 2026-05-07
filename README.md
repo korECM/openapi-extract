@@ -2,12 +2,21 @@
 
 [한국어 README](README.ko.md)
 
-`openapi-extract` is a Go TUI and CLI for turning a large OpenAPI 3.x document into a small, AI-friendly mini spec.
+`openapi-extract` turns a large OpenAPI 3.x document into a small, AI-friendly mini spec for only the endpoints you care about.
 
-It is built for two workflows:
+Stop pasting a whole API contract into an LLM when you only need `GET /players/{id}`. `openapi-extract` lists operations, lets you pick the relevant ones, and outputs a valid mini OpenAPI spec with just the selected paths plus the `$ref` components they need.
 
-- Humans can open a terminal UI, search operations, select a few endpoints, then copy or save the extracted spec.
-- AI agents and scripts can list operation IDs first, then extract only the operations they need without reading the full OpenAPI file directly.
+Why it helps:
+
+- Smaller prompts: in the Scalar Galaxy sample, one operation shrinks from 44,250 bytes / 1,450 lines to 14,837 bytes / 514 lines, about 66% smaller by bytes.
+- Better agent focus: agents can ask for an operation catalog first, then extract by stable operation id instead of reading the whole spec.
+- Safer mini specs: selected operations keep reachable schemas, responses, parameters, headers, request bodies, and security schemes.
+- Human-friendly too: use the TUI to search, multi-select, copy, or save without hand-editing YAML.
+
+Built for two workflows:
+
+- Humans open a terminal UI, search operations, select endpoints, then copy or save the extracted spec.
+- AI agents and scripts list operation IDs first, then extract only what they need.
 
 ## Install / Build
 
@@ -91,6 +100,14 @@ openapi-extract extract /Users/devsisters/Downloads/scalar-galaxy.yaml \
   --stdout
 ```
 
+The output remains a real OpenAPI document, just smaller:
+
+```text
+Scalar Galaxy full spec:              44,250 bytes / 1,450 lines
+GET /planets/{planetId} mini spec:    14,837 bytes /   514 lines
+Reduction:                            about 66% by bytes
+```
+
 ## Agent Integrations
 
 This repository includes reusable instructions and plugin metadata for multiple coding agents.
@@ -99,7 +116,18 @@ This repository includes reusable instructions and plugin metadata for multiple 
 - Claude Code: `plugins/openapi-extract/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`
 - Cursor: `.cursor/rules/openapi-extract.mdc`
 - OpenCode and generic agents: `AGENTS.md`
-- Shared skill: `plugins/openapi-extract/skills/openapi-extract/SKILL.md`
+- Shared skill: `skills/openapi-extract/SKILL.md`
+
+Quick installs:
+
+```bash
+# Claude Code plugin marketplace
+/plugin marketplace add korECM/openapi-extract
+/plugin install openapi-extract@openapi-extract-marketplace
+
+# Agent Skills CLI
+npx skills add korECM/openapi-extract --skill openapi-extract
+```
 
 See [docs/agent-integrations.md](docs/agent-integrations.md) for install and usage details.
 

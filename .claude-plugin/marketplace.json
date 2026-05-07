@@ -3,13 +3,16 @@
   "owner": {
     "name": "korECM"
   },
-  "description": "Local marketplace for the openapi-extract Claude Code plugin.",
+  "description": "Marketplace for the openapi-extract Claude Code plugin.",
   "plugins": [
     {
       "name": "openapi-extract",
-      "source": "./plugins/openapi-extract",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/korECM/openapi-extract.git",
+        "path": "plugins/openapi-extract"
+      },
       "description": "Adds an OpenAPI mini-spec extraction skill for AI agents.",
-      "version": "0.1.0",
       "author": {
         "name": "korECM"
       }

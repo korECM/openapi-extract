@@ -64,12 +64,39 @@ claude --plugin-dir ./plugins/openapi-extract
 Marketplace install flow inside Claude Code:
 
 ```text
-/plugin marketplace add .
+/plugin marketplace add korECM/openapi-extract
 /plugin install openapi-extract@openapi-extract-marketplace
 /openapi-extract:openapi-extract
 ```
 
+You can also use the full git URL:
+
+```text
+/plugin marketplace add https://github.com/korECM/openapi-extract.git
+```
+
 Claude Code plugin skills are namespaced by plugin name, so the skill command is `/openapi-extract:openapi-extract`.
+
+## Agent Skills CLI
+
+The repository also exposes a root skill for `npx skills`:
+
+```text
+skills/openapi-extract/SKILL.md
+```
+
+Install it with:
+
+```bash
+npx skills add korECM/openapi-extract --skill openapi-extract
+```
+
+Target specific agents if needed:
+
+```bash
+npx skills add korECM/openapi-extract --skill openapi-extract --agent claude-code --agent cursor
+npx skills add korECM/openapi-extract --skill openapi-extract --global -y
+```
 
 ## Cursor
 
@@ -96,7 +123,7 @@ It also supports Claude Code conventions as fallbacks, so `CLAUDE.md` and Claude
 Any agent can use the plain skill file:
 
 ```text
-plugins/openapi-extract/skills/openapi-extract/SKILL.md
+skills/openapi-extract/SKILL.md
 ```
 
 The minimum prompt instruction is:
@@ -134,7 +161,18 @@ go run . extract /Users/devsisters/Downloads/scalar-galaxy.yaml --id 'get_/plane
 
 Codex는 `.agents/plugins/marketplace.json`과 `.codex-plugin/plugin.json`을 사용합니다.
 
-Claude Code는 `.claude-plugin/marketplace.json`과 `.claude-plugin/plugin.json`을 사용합니다.
+Claude Code는 공식 marketplace 흐름으로 설치할 수 있습니다.
+
+```text
+/plugin marketplace add korECM/openapi-extract
+/plugin install openapi-extract@openapi-extract-marketplace
+```
+
+Agent Skills CLI도 지원합니다.
+
+```bash
+npx skills add korECM/openapi-extract --skill openapi-extract
+```
 
 Cursor는 `.cursor/rules/openapi-extract.mdc`를 사용합니다.
 

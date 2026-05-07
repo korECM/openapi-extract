@@ -2,7 +2,16 @@
 
 [English README](README.md)
 
-`openapi-extract`는 큰 OpenAPI 3.x 문서에서 필요한 endpoint만 골라 작은 AI-friendly spec으로 추출하는 Go TUI/CLI 도구입니다.
+`openapi-extract`는 큰 OpenAPI 3.x 문서에서 필요한 endpoint만 골라 작은 AI-friendly mini spec으로 추출하는 Go TUI/CLI 도구입니다.
+
+LLM에게 전체 API 계약을 붙여넣지 않아도 됩니다. 필요한 것이 `GET /players/{id}` 하나라면, operation catalog를 먼저 보고 필요한 operation만 골라 `$ref`까지 살아 있는 작은 OpenAPI spec으로 만들 수 있습니다.
+
+왜 필요한가:
+
+- prompt가 작아집니다. Scalar Galaxy 예시에서 단일 operation은 44,250 bytes / 1,450 lines에서 14,837 bytes / 514 lines로 줄어듭니다. byte 기준 약 66% 감소입니다.
+- agent가 더 집중합니다. 전체 spec을 읽는 대신 operation catalog를 보고 안정적인 operation id로 추출합니다.
+- mini spec이 깨지지 않습니다. 선택 operation에 필요한 schema, response, parameter, header, request body, security scheme을 함께 보존합니다.
+- 사람도 편합니다. TUI에서 검색, multi-select, copy, save를 할 수 있어 YAML을 손으로 잘라낼 필요가 없습니다.
 
 두 가지 사용 흐름을 지원합니다.
 
@@ -91,6 +100,14 @@ openapi-extract extract /Users/devsisters/Downloads/scalar-galaxy.yaml \
   --stdout
 ```
 
+출력은 여전히 OpenAPI 문서입니다. 단지 작아집니다.
+
+```text
+Scalar Galaxy 전체 spec:              44,250 bytes / 1,450 lines
+GET /planets/{planetId} mini spec:    14,837 bytes /   514 lines
+감소율:                               byte 기준 약 66%
+```
+
 ## Agent 연동
 
 여러 coding agent가 같은 추출 흐름을 쓰도록 plugin/rule/skill 파일을 포함했습니다.
@@ -99,7 +116,18 @@ openapi-extract extract /Users/devsisters/Downloads/scalar-galaxy.yaml \
 - Claude Code: `plugins/openapi-extract/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`
 - Cursor: `.cursor/rules/openapi-extract.mdc`
 - OpenCode와 범용 agent: `AGENTS.md`
-- 공통 skill: `plugins/openapi-extract/skills/openapi-extract/SKILL.md`
+- 공통 skill: `skills/openapi-extract/SKILL.md`
+
+빠른 설치:
+
+```bash
+# Claude Code plugin marketplace
+/plugin marketplace add korECM/openapi-extract
+/plugin install openapi-extract@openapi-extract-marketplace
+
+# Agent Skills CLI
+npx skills add korECM/openapi-extract --skill openapi-extract
+```
 
 설치와 사용 예시는 [docs/agent-integrations.md](docs/agent-integrations.md)를 참고하세요.
 
