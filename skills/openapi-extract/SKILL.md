@@ -5,7 +5,9 @@ description: Use when an AI agent needs a small OpenAPI 3.x mini spec for select
 
 # OpenAPI Extract
 
-Use the `openapi-extract` CLI when a task needs a compact OpenAPI spec for a few endpoints.
+Use the `openapi-extract` CLI when a task includes an OpenAPI spec file, URL, or pasted OpenAPI document and only a subset of endpoints is needed.
+
+Do not inspect or summarize a large OpenAPI file directly as the first step. First use `openapi-extract` to get a compact operation catalog, then extract the narrowest mini spec that matches the user's request. This keeps the agent context focused and prevents unrelated endpoints from influencing code generation or API reasoning.
 
 Install the CLI if it is missing:
 
@@ -13,18 +15,18 @@ Install the CLI if it is missing:
 go install github.com/korECM/openapi-extract@latest
 ```
 
-Do not read a large OpenAPI file directly unless the user explicitly asks. Prefer the two-step agent flow:
+Do not read a large OpenAPI file directly unless the user explicitly asks for full-spec analysis. Prefer the two-step agent flow:
 
 ```bash
-openapi-extract list <openapi.yaml|url|-> --format json
-openapi-extract extract <openapi.yaml|url|-> --id '<operation-id>' --stdout
+openapi-extract list <openapi.yaml|openapi.json|url|-> --format json
+openapi-extract extract <openapi.yaml|openapi.json|url|-> --id '<operation-id>' --stdout
 ```
 
 If `openapi-extract` is not on `PATH` and you are inside this repository, use:
 
 ```bash
-go run . list <openapi.yaml|url|-> --format json
-go run . extract <openapi.yaml|url|-> --id '<operation-id>' --stdout
+go run . list <openapi.yaml|openapi.json|url|-> --format json
+go run . extract <openapi.yaml|openapi.json|url|-> --id '<operation-id>' --stdout
 ```
 
 ## Workflow
@@ -34,6 +36,8 @@ go run . extract <openapi.yaml|url|-> --id '<operation-id>' --stdout
 3. Run `extract --stdout` and pass that mini spec to the next reasoning or code-generation step.
 4. Use `--format json` only when the downstream consumer specifically needs JSON. YAML is the default and preferred prompt format.
 5. Use `--copy` only for interactive user workflows. For agents, prefer `--stdout`.
+6. If the user provides a URL, pass the URL directly to `list` and `extract`; do not download the full spec into the prompt.
+7. If the task genuinely requires broad API coverage, select multiple operation ids and extract a combined mini spec instead of reading the whole source spec.
 
 ## Commands
 
