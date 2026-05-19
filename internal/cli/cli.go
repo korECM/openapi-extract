@@ -35,13 +35,18 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 }
 
 func runList(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if helpRequested(args) {
+		writeListHelp(stdout)
+		return 0
+	}
 	source, flagArgs, ok := splitSource(args)
 	if !ok {
-		fmt.Fprintln(stderr, "usage: openapi-extract list <openapi.yaml|url|-> [--format text|json]")
+		writeListHelp(stderr)
 		return 2
 	}
 	fs := flag.NewFlagSet("list", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(io.Discard)
+	fs.Usage = func() {}
 	format := fs.String("format", "text", "output format: text or json")
 	columnsFlag := fs.String("columns", "id,method,path,summary", "comma-separated text columns: id,method,path,operationId,summary,tags or all")
 	noHeader := fs.Bool("no-header", false, "hide the header row in text output")
@@ -263,13 +268,18 @@ func shouldColor(w io.Writer, noColor bool) bool {
 }
 
 func runExtract(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if helpRequested(args) {
+		writeExtractHelp(stdout)
+		return 0
+	}
 	source, flagArgs, ok := splitSource(args)
 	if !ok {
-		fmt.Fprintln(stderr, "usage: openapi-extract extract <openapi.yaml|url|-> (--id ID|--select 'METHOD /path') (--stdout|--copy|--output file)")
+		writeExtractHelp(stderr)
 		return 2
 	}
 	fs := flag.NewFlagSet("extract", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(io.Discard)
+	fs.Usage = func() {}
 	var ids repeated
 	var selects repeated
 	var tagSelect repeated
@@ -383,6 +393,67 @@ func runTUI(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+func helpRequested(args []string) bool {
+	for _, a := range args {
+		if a == "-h" || a == "--help" || a == "help" {
+			return true
+		}
+	}
+	return false
+}
+
+func writeListHelp(w io.Writer) {
+	fmt.Fprintln(w, strings.TrimSpace(`
+Usage:
+  openapi-extract list <openapi.yaml|url|-> [flags]
+
+Print the operation catalog for an OpenAPI document.
+
+Flags:
+  --format text|json     output format (default text)
+  --columns LIST         comma-separated columns: id,method,path,operationId,summary,tags (or "all")
+  --tag NAME             filter by tag (case-insensitive, repeatable)
+  --max-col-width N      truncate text cells to N runes with ellipsis (default 0 = no limit)
+  --no-header            hide the header row in text output
+  --no-color             disable ANSI colors in text output
+
+Examples:
+  openapi-extract list api.yaml --format json
+  openapi-extract list api.yaml --tag Orders --tag Payments
+  curl -s https://example.com/api.yaml | openapi-extract list - --max-col-width 60
+`))
+}
+
+func writeExtractHelp(w io.Writer) {
+	fmt.Fprintln(w, strings.TrimSpace(`
+Usage:
+  openapi-extract extract <openapi.yaml|url|-> (--id|--select|--tag) (--stdout|--copy|--output FILE) [flags]
+
+Extract a minimal OpenAPI spec containing only the selected operations and
+their transitively reachable components.
+
+Selection (at least one required):
+  --id ID                operation id from "list" output; method case-insensitive; repeatable
+  --select 'METHOD PATH' operation selector like "GET /v1/orders"; repeatable
+  --tag NAME             pull every operation under the given tag; case-insensitive, repeatable
+
+Output target (at least one required):
+  --stdout               write the mini spec to stdout
+  --copy                 copy the mini spec to the system clipboard
+  --output FILE          write the mini spec to FILE
+
+Other flags:
+  --format yaml|json     output format (default yaml)
+  --strip-info-description   drop info.description from the mini spec
+  --keep-info-description    keep info.description (overrides the --stdout default)
+
+Examples:
+  openapi-extract extract api.yaml --id 'get_/v1/orders' --stdout
+  openapi-extract extract api.yaml --tag Orders --output orders.yaml
+  openapi-extract extract api.yaml --id 'POST_/v1/orders' --id 'get_/v1/orders/{id}' --stdout
+`))
 }
 
 func usage(w io.Writer) {

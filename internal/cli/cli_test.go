@@ -111,6 +111,21 @@ paths:
 
 func runeCount(s string) int { return len([]rune(s)) }
 
+func TestSubcommandHelpExitsZero(t *testing.T) {
+	for _, sub := range []string{"list", "extract"} {
+		var out, errBuf bytes.Buffer
+		if code := Run([]string{sub, "--help"}, strings.NewReader(""), &out, &errBuf); code != 0 {
+			t.Fatalf("%s --help exit code = %d (stderr=%s)", sub, code, errBuf.String())
+		}
+		if !strings.Contains(out.String(), "Usage:") {
+			t.Fatalf("%s --help missing Usage section: %s", sub, out.String())
+		}
+		if errBuf.Len() != 0 {
+			t.Fatalf("%s --help leaked to stderr: %s", sub, errBuf.String())
+		}
+	}
+}
+
 func TestListFiltersByTag(t *testing.T) {
 	const source = `
 openapi: 3.0.3
