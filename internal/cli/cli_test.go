@@ -78,6 +78,74 @@ paths:
 	}
 }
 
+func TestListFiltersByTag(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info:
+  title: Test API
+  version: 1.0.0
+paths:
+  /orders:
+    get:
+      tags: [Orders]
+      summary: List orders
+      responses:
+        "200":
+          description: ok
+  /players:
+    get:
+      tags: [Players]
+      summary: List players
+      responses:
+        "200":
+          description: ok
+`
+	var out bytes.Buffer
+	if code := Run([]string{"list", "-", "--format", "json", "--tag", "orders"}, strings.NewReader(source), &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("list exit code = %d", code)
+	}
+	body := out.String()
+	if !strings.Contains(body, `"id": "get_/orders"`) {
+		t.Fatalf("Orders op missing: %s", body)
+	}
+	if strings.Contains(body, `"id": "get_/players"`) {
+		t.Fatalf("Players op should be filtered out: %s", body)
+	}
+}
+
+func TestExtractSelectsByTag(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info:
+  title: Test API
+  version: 1.0.0
+paths:
+  /orders:
+    get:
+      tags: [Orders]
+      responses:
+        "200":
+          description: ok
+  /players:
+    get:
+      tags: [Players]
+      responses:
+        "200":
+          description: ok
+`
+	var out bytes.Buffer
+	if code := Run([]string{"extract", "-", "--tag", "Orders", "--stdout"}, strings.NewReader(source), &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("extract exit code = %d", code)
+	}
+	body := out.String()
+	if !strings.Contains(body, "/orders:") {
+		t.Fatalf("Orders path missing: %s", body)
+	}
+	if strings.Contains(body, "/players:") {
+		t.Fatalf("Players path should not be included: %s", body)
+	}
+}
+
 func TestExtractWarnsOnPartialMissAndStillSucceeds(t *testing.T) {
 	const source = `
 openapi: 3.0.3

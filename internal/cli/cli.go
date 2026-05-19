@@ -46,6 +46,8 @@ func runList(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	columnsFlag := fs.String("columns", "id,method,path,summary", "comma-separated text columns: id,method,path,operationId,summary,tags or all")
 	noHeader := fs.Bool("no-header", false, "hide the header row in text output")
 	noColor := fs.Bool("no-color", false, "disable ANSI colors in text output")
+	var tagFilter repeated
+	fs.Var(&tagFilter, "tag", "filter operations by tag (case-insensitive, repeatable, OR semantics)")
 	if err := fs.Parse(flagArgs); err != nil {
 		return 2
 	}
@@ -59,7 +61,7 @@ func runList(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	ops := catalog.Build(loaded.Doc)
+	ops := catalog.FilterByTags(catalog.Build(loaded.Doc), tagFilter)
 	switch *format {
 	case "json":
 		data, err := output.Marshal(ops, "json")
@@ -245,8 +247,10 @@ func runExtract(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	var ids repeated
 	var selects repeated
+	var tagSelect repeated
 	fs.Var(&ids, "id", "operation id from `list` output; may be repeated")
 	fs.Var(&selects, "select", "operation selector like `GET /path`; may be repeated")
+	fs.Var(&tagSelect, "tag", "select all operations carrying this tag (case-insensitive, repeatable)")
 	format := fs.String("format", "yaml", "output format: yaml or json")
 	toStdout := fs.Bool("stdout", false, "write mini spec to stdout")
 	toCopy := fs.Bool("copy", false, "copy mini spec to clipboard")
@@ -260,8 +264,8 @@ func runExtract(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "unexpected arguments:", strings.Join(fs.Args(), " "))
 		return 2
 	}
-	if len(ids) == 0 && len(selects) == 0 {
-		fmt.Fprintln(stderr, "missing operation selection: use --id or --select")
+	if len(ids) == 0 && len(selects) == 0 && len(tagSelect) == 0 {
+		fmt.Fprintln(stderr, "missing operation selection: use --id, --select, or --tag")
 		return 2
 	}
 	if !*toStdout && !*toCopy && *outputPath == "" {
@@ -275,13 +279,39 @@ func runExtract(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	ops := catalog.Build(loaded.Doc)
-	result, err := catalog.Find(ops, ids, selects)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
+	var result catalog.FindResult
+	if len(ids) > 0 || len(selects) > 0 {
+		result, err = catalog.Find(ops, ids, selects)
+		if err != nil && len(tagSelect) == 0 {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		for _, m := range result.Missing {
+			fmt.Fprintf(stderr, "warning: operation not found: %s\n", m)
+		}
 	}
-	for _, m := range result.Missing {
-		fmt.Fprintf(stderr, "warning: operation not found: %s\n", m)
+	if len(tagSelect) > 0 {
+		seen := map[string]bool{}
+		for _, op := range result.Operations {
+			seen[op.ID] = true
+		}
+		taggedAdded := 0
+		for _, op := range catalog.FilterByTags(ops, tagSelect) {
+			if seen[op.ID] {
+				continue
+			}
+			seen[op.ID] = true
+			result.Operations = append(result.Operations, op)
+			taggedAdded++
+		}
+		if taggedAdded == 0 && len(result.Operations) == 0 {
+			fmt.Fprintf(stderr, "no operations matched the requested tags: %s\n", strings.Join(tagSelect, ", "))
+			return 1
+		}
+	}
+	if len(result.Operations) == 0 {
+		fmt.Fprintln(stderr, "no operations matched")
+		return 1
 	}
 	opts := extractor.Options{StripInfoDescription: resolveStripInfo(*stripInfo, *keepInfo, *toStdout)}
 	mini, err := extractor.Extract(loaded.Raw, result.Operations, opts)

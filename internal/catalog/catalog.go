@@ -48,6 +48,28 @@ func Build(doc *openapi3.T) []Operation {
 	return ops
 }
 
+// FilterByTags returns the subset of ops that carry at least one of the
+// requested tags (case-insensitive). An empty tags slice returns ops as-is.
+func FilterByTags(ops []Operation, tags []string) []Operation {
+	if len(tags) == 0 {
+		return ops
+	}
+	wanted := make(map[string]bool, len(tags))
+	for _, t := range tags {
+		wanted[strings.ToLower(strings.TrimSpace(t))] = true
+	}
+	out := make([]Operation, 0, len(ops))
+	for _, op := range ops {
+		for _, tag := range op.Tags {
+			if wanted[strings.ToLower(tag)] {
+				out = append(out, op)
+				break
+			}
+		}
+	}
+	return out
+}
+
 // Find resolves ids and selects against the operation catalog.
 //
 // Missing entries are collected on FindResult.Missing instead of aborting the
