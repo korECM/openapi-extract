@@ -9,14 +9,22 @@ import (
 	"github.com/korECM/openapi-extract/internal/ordered"
 )
 
-func Extract(raw map[string]any, selected []catalog.Operation) (*ordered.Map, error) {
+type Options struct {
+	StripInfoDescription bool
+}
+
+func Extract(raw map[string]any, selected []catalog.Operation, opts Options) (*ordered.Map, error) {
 	if len(selected) == 0 {
 		return nil, fmt.Errorf("no operations selected")
 	}
 
 	mini := ordered.New()
 	copyRoot(mini, raw, "openapi")
-	copyRoot(mini, raw, "info")
+	if opts.StripInfoDescription {
+		copyInfoWithoutDescription(mini, raw)
+	} else {
+		copyRoot(mini, raw, "info")
+	}
 	copyRoot(mini, raw, "jsonSchemaDialect")
 	copyRoot(mini, raw, "servers")
 	copyRoot(mini, raw, "security")
@@ -68,6 +76,29 @@ func copyRoot(dst *ordered.Map, src map[string]any, key string) {
 	if value, ok := src[key]; ok {
 		dst.Set(key, value)
 	}
+}
+
+func copyInfoWithoutDescription(dst *ordered.Map, src map[string]any) {
+	info, ok := asMap(src["info"])
+	if !ok {
+		return
+	}
+	filtered := ordered.New()
+	for _, key := range []string{"title", "summary", "termsOfService", "contact", "license", "version"} {
+		if value, exists := info[key]; exists {
+			filtered.Set(key, value)
+		}
+	}
+	for key, value := range info {
+		if key == "description" {
+			continue
+		}
+		if _, already := filtered.Get(key); already {
+			continue
+		}
+		filtered.Set(key, value)
+	}
+	dst.Set("info", filtered)
 }
 
 func filterTags(mini *ordered.Map, raw map[string]any, selected []catalog.Operation) {

@@ -83,7 +83,7 @@ components:
 		t.Fatal(err)
 	}
 
-	mini, err := Extract(loaded.Raw, selected)
+	mini, err := Extract(loaded.Raw, selected, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ components:
 		t.Fatal(err)
 	}
 
-	mini, err := Extract(loaded.Raw, selected)
+	mini, err := Extract(loaded.Raw, selected, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,6 +160,61 @@ components:
 	}
 	if _, ok := schemes.Get("unusedKey"); ok {
 		t.Fatal("unused security scheme included")
+	}
+}
+
+func TestExtractStripsInfoDescriptionWhenRequested(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info:
+  title: Test API
+  version: 1.0.0
+  description: |
+    Long preamble about auth, rate limits, error codes.
+    Spans many lines and bloats every extracted mini spec.
+paths:
+  /health:
+    get:
+      responses:
+        "200":
+          description: ok
+`
+	loaded, err := specio.Load("-", strings.NewReader(source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ops := catalog.Build(loaded.Doc)
+	selected, err := catalog.Find(ops, []string{"get_/health"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stripped, err := Extract(loaded.Raw, selected, Options{StripInfoDescription: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := mustOrderedMap(t, stripped, "info")
+	if _, ok := info.Get("description"); ok {
+		t.Fatal("info.description should be stripped")
+	}
+	if _, ok := info.Get("title"); !ok {
+		t.Fatal("info.title should be preserved")
+	}
+
+	kept, err := Extract(loaded.Raw, selected, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawInfo, ok := kept.Get("info")
+	if !ok {
+		t.Fatal("info missing in default extract")
+	}
+	infoMap, ok := rawInfo.(map[string]any)
+	if !ok {
+		t.Fatalf("default info is %T, want map[string]any", rawInfo)
+	}
+	if _, ok := infoMap["description"]; !ok {
+		t.Fatal("info.description should be preserved by default")
 	}
 }
 

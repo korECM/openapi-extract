@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 )
@@ -74,6 +75,68 @@ paths:
 	}
 	if !strings.Contains(out, "post_/long/path  POST    /long/path  Long") {
 		t.Fatalf("POST row not aligned as expected: %q", out)
+	}
+}
+
+func TestExtractStdoutStripsInfoDescriptionByDefault(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info:
+  title: Test API
+  version: 1.0.0
+  description: Long preamble describing auth and rate limits.
+paths:
+  /health:
+    get:
+      responses:
+        "200":
+          description: ok
+`
+	var out bytes.Buffer
+	if code := Run([]string{"extract", "-", "--id", "get_/health", "--stdout"}, strings.NewReader(source), &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("extract exit code = %d", code)
+	}
+	body := out.String()
+	if strings.Contains(body, "Long preamble") {
+		t.Fatalf("info.description should be stripped from --stdout output by default: %s", body)
+	}
+	if !strings.Contains(body, "title: Test API") {
+		t.Fatalf("info.title should remain: %s", body)
+	}
+
+	out.Reset()
+	if code := Run([]string{"extract", "-", "--id", "get_/health", "--stdout", "--keep-info-description"}, strings.NewReader(source), &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("extract --keep-info-description exit code = %d", code)
+	}
+	if !strings.Contains(out.String(), "Long preamble") {
+		t.Fatalf("--keep-info-description should preserve description: %s", out.String())
+	}
+}
+
+func TestExtractFileKeepsInfoDescriptionByDefault(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info:
+  title: Test API
+  version: 1.0.0
+  description: Long preamble describing auth and rate limits.
+paths:
+  /health:
+    get:
+      responses:
+        "200":
+          description: ok
+`
+	tmp := t.TempDir() + "/mini.yaml"
+	if code := Run([]string{"extract", "-", "--id", "get_/health", "--output", tmp}, strings.NewReader(source), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("extract --output exit code = %d", code)
+	}
+	data, err := os.ReadFile(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "Long preamble") {
+		t.Fatalf("--output should keep info.description by default: %s", string(data))
 	}
 }
 

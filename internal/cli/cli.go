@@ -251,6 +251,8 @@ func runExtract(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	toStdout := fs.Bool("stdout", false, "write mini spec to stdout")
 	toCopy := fs.Bool("copy", false, "copy mini spec to clipboard")
 	outputPath := fs.String("output", "", "write mini spec to file")
+	stripInfo := fs.Bool("strip-info-description", false, "drop info.description from mini spec")
+	keepInfo := fs.Bool("keep-info-description", false, "keep info.description even when --stdout default would strip it")
 	if err := fs.Parse(flagArgs); err != nil {
 		return 2
 	}
@@ -278,7 +280,8 @@ func runExtract(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	mini, err := extractor.Extract(loaded.Raw, selected)
+	opts := extractor.Options{StripInfoDescription: resolveStripInfo(*stripInfo, *keepInfo, *toStdout)}
+	mini, err := extractor.Extract(loaded.Raw, selected, opts)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -335,6 +338,16 @@ AI-friendly flow:
   openapi-extract list openapi.yaml --format json
   openapi-extract extract openapi.yaml --id 'get_/players/{player_id}' --stdout
 `))
+}
+
+func resolveStripInfo(strip, keep, toStdout bool) bool {
+	if keep {
+		return false
+	}
+	if strip {
+		return true
+	}
+	return toStdout
 }
 
 type repeated []string

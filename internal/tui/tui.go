@@ -186,7 +186,7 @@ func (m model) writeSelection(target, path string) model {
 		m.message = "select at least one operation first"
 		return m
 	}
-	mini, err := extractor.Extract(m.raw, selected)
+	mini, err := extractor.Extract(m.raw, selected, extractor.Options{})
 	if err != nil {
 		m.message = err.Error()
 		return m
