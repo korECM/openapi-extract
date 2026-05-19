@@ -48,7 +48,12 @@ func Build(doc *openapi3.T) []Operation {
 	return ops
 }
 
-func Find(ops []Operation, ids []string, selects []string) ([]Operation, error) {
+// Find resolves ids and selects against the operation catalog.
+//
+// Missing entries are collected on FindResult.Missing instead of aborting the
+// whole call, so callers can extract the successful subset and warn about the
+// rest. An error is returned only when nothing matched.
+func Find(ops []Operation, ids []string, selects []string) (FindResult, error) {
 	byID := make(map[string]Operation, len(ops))
 	bySelect := make(map[string]Operation, len(ops))
 	for _, op := range ops {
@@ -56,29 +61,39 @@ func Find(ops []Operation, ids []string, selects []string) ([]Operation, error) 
 		bySelect[selectorKey(op.Method, op.Path)] = op
 	}
 
-	selected := make([]Operation, 0, len(ids)+len(selects))
+	res := FindResult{}
 	seen := map[string]bool{}
 	for _, id := range ids {
 		op, ok := byID[id]
 		if !ok {
-			return nil, fmt.Errorf("operation not found: %s", id)
+			res.Missing = append(res.Missing, id)
+			continue
 		}
 		if !seen[op.ID] {
-			selected = append(selected, op)
+			res.Operations = append(res.Operations, op)
 			seen[op.ID] = true
 		}
 	}
 	for _, selector := range selects {
 		op, ok := bySelect[selectorKeyFromString(selector)]
 		if !ok {
-			return nil, fmt.Errorf("operation not found: %s", selector)
+			res.Missing = append(res.Missing, selector)
+			continue
 		}
 		if !seen[op.ID] {
-			selected = append(selected, op)
+			res.Operations = append(res.Operations, op)
 			seen[op.ID] = true
 		}
 	}
-	return selected, nil
+	if len(res.Operations) == 0 {
+		return res, fmt.Errorf("no operations matched (missing: %s)", strings.Join(res.Missing, ", "))
+	}
+	return res, nil
+}
+
+type FindResult struct {
+	Operations []Operation
+	Missing    []string
 }
 
 func selectorKey(method, path string) string {

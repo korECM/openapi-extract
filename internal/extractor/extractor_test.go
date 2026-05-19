@@ -83,7 +83,7 @@ components:
 		t.Fatal(err)
 	}
 
-	mini, err := Extract(loaded.Raw, selected, Options{})
+	mini, err := Extract(loaded.Raw, selected.Operations, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ components:
 		t.Fatal(err)
 	}
 
-	mini, err := Extract(loaded.Raw, selected, Options{})
+	mini, err := Extract(loaded.Raw, selected.Operations, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ paths:
 		t.Fatal(err)
 	}
 
-	stripped, err := Extract(loaded.Raw, selected, Options{StripInfoDescription: true})
+	stripped, err := Extract(loaded.Raw, selected.Operations, Options{StripInfoDescription: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ paths:
 		t.Fatal("info.title should be preserved")
 	}
 
-	kept, err := Extract(loaded.Raw, selected, Options{})
+	kept, err := Extract(loaded.Raw, selected.Operations, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

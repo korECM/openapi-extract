@@ -275,13 +275,16 @@ func runExtract(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	ops := catalog.Build(loaded.Doc)
-	selected, err := catalog.Find(ops, ids, selects)
+	result, err := catalog.Find(ops, ids, selects)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+	for _, m := range result.Missing {
+		fmt.Fprintf(stderr, "warning: operation not found: %s\n", m)
+	}
 	opts := extractor.Options{StripInfoDescription: resolveStripInfo(*stripInfo, *keepInfo, *toStdout)}
-	mini, err := extractor.Extract(loaded.Raw, selected, opts)
+	mini, err := extractor.Extract(loaded.Raw, result.Operations, opts)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1

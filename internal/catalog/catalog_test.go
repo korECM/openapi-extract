@@ -54,7 +54,35 @@ func TestFindByIDAndSelector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(selected) != 2 {
-		t.Fatalf("len(selected) = %d, want 2", len(selected))
+	if len(selected.Operations) != 2 {
+		t.Fatalf("len(selected.Operations) = %d, want 2", len(selected.Operations))
+	}
+	if len(selected.Missing) != 0 {
+		t.Fatalf("unexpected misses: %v", selected.Missing)
+	}
+}
+
+func TestFindReportsPartialMissesInsteadOfAborting(t *testing.T) {
+	ops := []Operation{
+		{ID: "get_/health", Method: "GET", Path: "/health"},
+		{ID: "post_/players", Method: "POST", Path: "/players"},
+	}
+
+	res, err := Find(ops, []string{"get_/health", "get_/nope"}, []string{"DELETE /players"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(res.Operations) != 1 || res.Operations[0].ID != "get_/health" {
+		t.Fatalf("got operations %#v", res.Operations)
+	}
+	if len(res.Missing) != 2 {
+		t.Fatalf("missing = %v, want 2 entries", res.Missing)
+	}
+}
+
+func TestFindReturnsErrorWhenNothingMatches(t *testing.T) {
+	ops := []Operation{{ID: "get_/health", Method: "GET", Path: "/health"}}
+	if _, err := Find(ops, []string{"get_/missing"}, nil); err == nil {
+		t.Fatal("expected error when no operations match")
 	}
 }

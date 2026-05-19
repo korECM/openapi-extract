@@ -78,6 +78,55 @@ paths:
 	}
 }
 
+func TestExtractWarnsOnPartialMissAndStillSucceeds(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info:
+  title: Test API
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      responses:
+        "200":
+          description: ok
+`
+	var out, errBuf bytes.Buffer
+	args := []string{"extract", "-", "--id", "get_/health", "--id", "get_/nope", "--stdout"}
+	if code := Run(args, strings.NewReader(source), &out, &errBuf); code != 0 {
+		t.Fatalf("exit code = %d (stderr=%s)", code, errBuf.String())
+	}
+	if !strings.Contains(out.String(), "/health:") {
+		t.Fatalf("successful op missing from output: %s", out.String())
+	}
+	if !strings.Contains(errBuf.String(), "warning: operation not found: get_/nope") {
+		t.Fatalf("missing warning in stderr: %s", errBuf.String())
+	}
+}
+
+func TestExtractFailsWhenAllMissing(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info:
+  title: Test API
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      responses:
+        "200":
+          description: ok
+`
+	var out, errBuf bytes.Buffer
+	args := []string{"extract", "-", "--id", "get_/nope", "--stdout"}
+	if code := Run(args, strings.NewReader(source), &out, &errBuf); code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(errBuf.String(), "no operations matched") {
+		t.Fatalf("expected aggregate error in stderr: %s", errBuf.String())
+	}
+}
+
 func TestExtractStdoutStripsInfoDescriptionByDefault(t *testing.T) {
 	const source = `
 openapi: 3.0.3
