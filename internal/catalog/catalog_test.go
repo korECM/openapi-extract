@@ -80,6 +80,29 @@ func TestFindReportsPartialMissesInsteadOfAborting(t *testing.T) {
 	}
 }
 
+func TestFindAcceptsCaseInsensitiveMethodInID(t *testing.T) {
+	ops := []Operation{
+		{ID: "post_/v1/orders", Method: "POST", Path: "/v1/orders"},
+	}
+	res, err := Find(ops, []string{"POST_/v1/orders"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Operations) != 1 || res.Operations[0].ID != "post_/v1/orders" {
+		t.Fatalf("got %#v", res.Operations)
+	}
+}
+
+func TestFindKeepsPathCaseSensitive(t *testing.T) {
+	ops := []Operation{
+		{ID: "post_/v1/orders", Method: "POST", Path: "/v1/orders"},
+	}
+	res, err := Find(ops, []string{"post_/V1/orders"}, nil)
+	if err == nil {
+		t.Fatalf("expected miss for path with different case; got %#v", res.Operations)
+	}
+}
+
 func TestFindReturnsErrorWhenNothingMatches(t *testing.T) {
 	ops := []Operation{{ID: "get_/health", Method: "GET", Path: "/health"}}
 	if _, err := Find(ops, []string{"get_/missing"}, nil); err == nil {

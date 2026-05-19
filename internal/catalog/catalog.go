@@ -64,7 +64,7 @@ func Find(ops []Operation, ids []string, selects []string) (FindResult, error) {
 	res := FindResult{}
 	seen := map[string]bool{}
 	for _, id := range ids {
-		op, ok := byID[id]
+		op, ok := byID[normalizeID(id)]
 		if !ok {
 			res.Missing = append(res.Missing, id)
 			continue
@@ -110,6 +110,18 @@ func selectorKeyFromString(selector string) string {
 
 func IDFor(method, path string) string {
 	return strings.ToLower(method) + "_" + path
+}
+
+// normalizeID lowercases the method portion of an id (the part before the
+// first `_`) while leaving the path untouched. URL paths are case-sensitive
+// in OpenAPI, so we only normalize what is guaranteed to be case-insensitive.
+func normalizeID(id string) string {
+	id = strings.TrimSpace(id)
+	idx := strings.Index(id, "_")
+	if idx <= 0 {
+		return strings.ToLower(id)
+	}
+	return strings.ToLower(id[:idx]) + id[idx:]
 }
 
 func operationForMethod(item *openapi3.PathItem, method string) *openapi3.Operation {
