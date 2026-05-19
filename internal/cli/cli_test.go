@@ -78,6 +78,39 @@ paths:
 	}
 }
 
+func TestListTruncatesCellsWithMaxColWidth(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info:
+  title: Test API
+  version: 1.0.0
+paths:
+  /very/deeply/nested/resource/that/is/long:
+    get:
+      summary: A summary that should be cut off
+      responses:
+        "200":
+          description: ok
+`
+	var out bytes.Buffer
+	args := []string{"list", "-", "--max-col-width", "12", "--no-header"}
+	if code := Run(args, strings.NewReader(source), &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if !strings.Contains(out.String(), "…") {
+		t.Fatalf("expected ellipsis in truncated output: %q", out.String())
+	}
+	for _, line := range strings.Split(strings.TrimRight(out.String(), "\n"), "\n") {
+		for _, part := range strings.Fields(line) {
+			if runeCount(part) > 12 {
+				t.Fatalf("cell %q exceeds 12 runes in line %q", part, line)
+			}
+		}
+	}
+}
+
+func runeCount(s string) int { return len([]rune(s)) }
+
 func TestListFiltersByTag(t *testing.T) {
 	const source = `
 openapi: 3.0.3

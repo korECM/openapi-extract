@@ -48,6 +48,7 @@ func runList(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	noColor := fs.Bool("no-color", false, "disable ANSI colors in text output")
 	var tagFilter repeated
 	fs.Var(&tagFilter, "tag", "filter operations by tag (case-insensitive, repeatable, OR semantics)")
+	maxColWidth := fs.Int("max-col-width", 0, "truncate text-column cells to N runes with ellipsis (0 = no limit)")
 	if err := fs.Parse(flagArgs); err != nil {
 		return 2
 	}
@@ -76,7 +77,7 @@ func runList(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, err)
 			return 2
 		}
-		writeTextCatalog(stdout, ops, columns, !*noHeader, shouldColor(stdout, *noColor))
+		writeTextCatalog(stdout, ops, columns, !*noHeader, shouldColor(stdout, *noColor), *maxColWidth)
 	default:
 		fmt.Fprintf(stderr, "unsupported format: %s\n", *format)
 		return 2
@@ -84,15 +85,20 @@ func runList(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func writeTextCatalog(w io.Writer, ops []catalog.Operation, columns []listColumn, header bool, color bool) {
+func writeTextCatalog(w io.Writer, ops []catalog.Operation, columns []listColumn, header bool, color bool, maxColWidth int) {
+	values := make([][]string, len(ops))
 	widths := make([]int, len(columns))
 	for i, column := range columns {
-		widths[i] = len(column.Header)
+		widths[i] = runeLen(column.Header)
 	}
-	for _, op := range ops {
+	for opIdx, op := range ops {
+		row := make([]string, len(columns))
 		for i, column := range columns {
-			widths[i] = max(widths[i], len(column.Value(op)))
+			cell := truncateCell(column.Value(op), maxColWidth)
+			row[i] = cell
+			widths[i] = max(widths[i], runeLen(cell))
 		}
+		values[opIdx] = row
 	}
 
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("250"))
@@ -115,10 +121,10 @@ func writeTextCatalog(w io.Writer, ops []catalog.Operation, columns []listColumn
 		fmt.Fprintln(w, strings.Join(cells, "  "))
 	}
 
-	for _, op := range ops {
+	for opIdx, op := range ops {
 		cells := make([]string, 0, len(columns))
 		for i, column := range columns {
-			value := column.Value(op)
+			value := values[opIdx][i]
 			if i < len(columns)-1 {
 				value = padRight(value, widths[i])
 			}
@@ -201,10 +207,29 @@ var knownListColumns = map[string]listColumn{
 }
 
 func padRight(value string, width int) string {
-	if len(value) >= width {
+	current := runeLen(value)
+	if current >= width {
 		return value
 	}
-	return value + strings.Repeat(" ", width-len(value))
+	return value + strings.Repeat(" ", width-current)
+}
+
+func runeLen(value string) int {
+	return len([]rune(value))
+}
+
+func truncateCell(value string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return value
+	}
+	runes := []rune(value)
+	if len(runes) <= maxWidth {
+		return value
+	}
+	if maxWidth == 1 {
+		return "…"
+	}
+	return string(runes[:maxWidth-1]) + "…"
 }
 
 func methodStyle(method string) lipgloss.Style {
