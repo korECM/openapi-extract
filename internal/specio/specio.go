@@ -37,7 +37,7 @@ func Load(source string, stdin io.Reader) (*Loaded, error) {
 	loader.IsExternalRefsAllowed = true
 	doc, err := loader.LoadFromData(data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse OpenAPI document: %w", err)
+		return nil, fmt.Errorf("not a valid OpenAPI document: %s", summarizeParseError(err))
 	}
 	if doc.OpenAPI == "" {
 		return nil, fmt.Errorf("unsupported OpenAPI version: empty")
@@ -56,6 +56,25 @@ func Load(source string, stdin io.Reader) (*Loaded, error) {
 	}
 
 	return &Loaded{Doc: doc, Raw: raw}, nil
+}
+
+// summarizeParseError trims internal Go type names and multi-error chains down
+// to the most useful first line for a user. kin-openapi's combined json/yaml
+// error mentions internal generated types (openapi3.TBis etc.) that confuse
+// readers; we keep only the first error path.
+func summarizeParseError(err error) string {
+	msg := err.Error()
+	if idx := strings.Index(msg, ", yaml error:"); idx >= 0 {
+		msg = msg[:idx]
+	}
+	if idx := strings.Index(msg, " of type openapi3."); idx >= 0 {
+		msg = msg[:idx]
+	}
+	msg = strings.TrimPrefix(msg, "failed to unmarshal data: ")
+	if idx := strings.Index(msg, "\n"); idx >= 0 {
+		msg = msg[:idx]
+	}
+	return strings.TrimSpace(msg)
 }
 
 func readURL(source string) ([]byte, error) {

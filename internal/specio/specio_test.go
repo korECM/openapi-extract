@@ -7,6 +7,20 @@ import (
 	"testing"
 )
 
+func TestLoadInvalidInputProducesFriendlyError(t *testing.T) {
+	_, err := Load("-", strings.NewReader("random non-spec text"))
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "not a valid OpenAPI document") {
+		t.Fatalf("error should be friendly: %s", msg)
+	}
+	if strings.Contains(msg, "openapi3.") {
+		t.Fatalf("error should not leak kin-openapi internal types: %s", msg)
+	}
+}
+
 func TestLoadFromURL(t *testing.T) {
 	const source = `
 openapi: 3.0.3
