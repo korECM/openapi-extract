@@ -3,6 +3,7 @@ package catalog
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -18,6 +19,14 @@ type Operation struct {
 	Tags        []string `json:"tags,omitempty" yaml:"tags,omitempty"`
 	Deprecated  bool     `json:"deprecated,omitempty" yaml:"deprecated,omitempty"`
 	Security    []string `json:"security,omitempty" yaml:"security,omitempty"`
+	// HasRequestBody is true when the operation defines a requestBody.
+	HasRequestBody bool `json:"hasRequestBody,omitempty" yaml:"hasRequestBody,omitempty"`
+	// RequestBodyRequired mirrors requestBody.required (defaults to false
+	// per OpenAPI spec when requestBody is present but the flag is absent).
+	RequestBodyRequired bool `json:"requestBodyRequired,omitempty" yaml:"requestBodyRequired,omitempty"`
+	// ResponseCodes lists declared response status keys in stable order
+	// (numeric codes ascending, "default" last, others sorted).
+	ResponseCodes []string `json:"responseCodes,omitempty" yaml:"responseCodes,omitempty"`
 	// Kind is "operation" for path-mounted endpoints and "webhook" for
 	// OpenAPI 3.1 top-level webhooks. Path holds the webhook name in the
 	// latter case.
@@ -69,17 +78,21 @@ func operationsFromPathItem(item *openapi3.PathItem, key, kind string, docSec op
 		if op == nil {
 			continue
 		}
+		hasBody, bodyRequired := requestBodyInfo(op)
 		ops = append(ops, Operation{
-			ID:          id(method, key),
-			Method:      strings.ToUpper(method),
-			Path:        key,
-			OperationID: op.OperationID,
-			Summary:     op.Summary,
-			Description: firstNonEmptyLine(op.Description),
-			Tags:        append([]string(nil), op.Tags...),
-			Deprecated:  op.Deprecated,
-			Security:    operationSecurityNames(op.Security, docSec),
-			Kind:        kind,
+			ID:                  id(method, key),
+			Method:              strings.ToUpper(method),
+			Path:                key,
+			OperationID:         op.OperationID,
+			Summary:             op.Summary,
+			Description:         firstNonEmptyLine(op.Description),
+			Tags:                append([]string(nil), op.Tags...),
+			Deprecated:          op.Deprecated,
+			Security:            operationSecurityNames(op.Security, docSec),
+			HasRequestBody:      hasBody,
+			RequestBodyRequired: bodyRequired,
+			ResponseCodes:       responseCodes(op),
+			Kind:                kind,
 		})
 	}
 	return ops
@@ -120,6 +133,57 @@ func operationSecurityNames(opSec *openapi3.SecurityRequirements, docSec openapi
 	return names
 }
 
+func requestBodyInfo(op *openapi3.Operation) (bool, bool) {
+	if op == nil || op.RequestBody == nil {
+		return false, false
+	}
+	body := op.RequestBody.Value
+	if body == nil {
+		// Pure $ref without resolved Value (external refs disabled). Treat as
+		// present but conservatively required=false; the catalog cannot peer
+		// into an unresolved ref.
+		return true, false
+	}
+	return true, body.Required
+}
+
+func responseCodes(op *openapi3.Operation) []string {
+	if op == nil || op.Responses == nil {
+		return nil
+	}
+	m := op.Responses.Map()
+	if len(m) == 0 {
+		return nil
+	}
+	codes := make([]string, 0, len(m))
+	for code := range m {
+		codes = append(codes, code)
+	}
+	sort.Slice(codes, func(i, j int) bool {
+		return responseCodeLess(codes[i], codes[j])
+	})
+	return codes
+}
+
+func responseCodeLess(a, b string) bool {
+	aNum, aErr := strconv.Atoi(a)
+	bNum, bErr := strconv.Atoi(b)
+	switch {
+	case aErr == nil && bErr == nil:
+		return aNum < bNum
+	case aErr == nil:
+		return true
+	case bErr == nil:
+		return false
+	case a == "default":
+		return false
+	case b == "default":
+		return true
+	default:
+		return a < b
+	}
+}
+
 // FilterByTags returns the subset of ops that carry at least one of the
 // requested tags (case-insensitive). An empty tags slice returns ops as-is.
 func FilterByTags(ops []Operation, tags []string) []Operation {
@@ -137,6 +201,32 @@ func FilterByTags(ops []Operation, tags []string) []Operation {
 				out = append(out, op)
 				break
 			}
+		}
+	}
+	return out
+}
+
+// FilterExcludeTags drops ops carrying any of the listed tags
+// (case-insensitive). An empty list returns ops as-is.
+func FilterExcludeTags(ops []Operation, tags []string) []Operation {
+	if len(tags) == 0 {
+		return ops
+	}
+	excluded := make(map[string]bool, len(tags))
+	for _, t := range tags {
+		excluded[strings.ToLower(strings.TrimSpace(t))] = true
+	}
+	out := make([]Operation, 0, len(ops))
+	for _, op := range ops {
+		drop := false
+		for _, tag := range op.Tags {
+			if excluded[strings.ToLower(tag)] {
+				drop = true
+				break
+			}
+		}
+		if !drop {
+			out = append(out, op)
 		}
 	}
 	return out
