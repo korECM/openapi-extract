@@ -14,7 +14,10 @@ type Operation struct {
 	Path        string   `json:"path" yaml:"path"`
 	OperationID string   `json:"operationId,omitempty" yaml:"operationId,omitempty"`
 	Summary     string   `json:"summary,omitempty" yaml:"summary,omitempty"`
+	Description string   `json:"description,omitempty" yaml:"description,omitempty"`
 	Tags        []string `json:"tags,omitempty" yaml:"tags,omitempty"`
+	Deprecated  bool     `json:"deprecated,omitempty" yaml:"deprecated,omitempty"`
+	Security    []string `json:"security,omitempty" yaml:"security,omitempty"`
 }
 
 var Methods = []string{"get", "put", "post", "delete", "options", "head", "patch", "trace"}
@@ -41,11 +44,49 @@ func Build(doc *openapi3.T) []Operation {
 				Path:        path,
 				OperationID: op.OperationID,
 				Summary:     op.Summary,
+				Description: firstNonEmptyLine(op.Description),
 				Tags:        append([]string(nil), op.Tags...),
+				Deprecated:  op.Deprecated,
+				Security:    operationSecurityNames(op.Security, doc.Security),
 			})
 		}
 	}
 	return ops
+}
+
+func firstNonEmptyLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func operationSecurityNames(opSec *openapi3.SecurityRequirements, docSec openapi3.SecurityRequirements) []string {
+	var requirements openapi3.SecurityRequirements
+	if opSec != nil {
+		requirements = *opSec
+	} else {
+		requirements = docSec
+	}
+	if len(requirements) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	var names []string
+	for _, req := range requirements {
+		for name := range req {
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 // FilterByTags returns the subset of ops that carry at least one of the

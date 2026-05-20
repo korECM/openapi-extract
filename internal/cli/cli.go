@@ -163,7 +163,7 @@ func parseColumns(value string) ([]listColumn, error) {
 		return nil, fmt.Errorf("missing columns")
 	}
 	if value == "all" {
-		value = "id,method,path,operationId,summary,tags"
+		value = "id,method,path,operationId,summary,description,tags,deprecated,security"
 	}
 	parts := strings.Split(value, ",")
 	columns := make([]listColumn, 0, len(parts))
@@ -171,7 +171,7 @@ func parseColumns(value string) ([]listColumn, error) {
 		name := strings.TrimSpace(part)
 		column, ok := knownListColumns[name]
 		if !ok {
-			return nil, fmt.Errorf("unknown column %q; available columns: id,method,path,operationId,summary,tags", name)
+			return nil, fmt.Errorf("unknown column %q; available columns: id,method,path,operationId,summary,description,tags,deprecated,security", name)
 		}
 		columns = append(columns, column)
 	}
@@ -208,6 +208,26 @@ var knownListColumns = map[string]listColumn{
 		Name:   "tags",
 		Header: "TAGS",
 		Value:  func(op catalog.Operation) string { return strings.Join(op.Tags, ",") },
+	},
+	"description": {
+		Name:   "description",
+		Header: "DESCRIPTION",
+		Value:  func(op catalog.Operation) string { return op.Description },
+	},
+	"deprecated": {
+		Name:   "deprecated",
+		Header: "DEPRECATED",
+		Value: func(op catalog.Operation) string {
+			if op.Deprecated {
+				return "yes"
+			}
+			return ""
+		},
+	},
+	"security": {
+		Name:   "security",
+		Header: "SECURITY",
+		Value:  func(op catalog.Operation) string { return strings.Join(op.Security, ",") },
 	},
 }
 
