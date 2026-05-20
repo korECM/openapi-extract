@@ -31,14 +31,53 @@ func Extract(raw map[string]any, selected []catalog.Operation, opts Options) (*o
 	copyRoot(mini, raw, "tags")
 	copyRoot(mini, raw, "externalDocs")
 
-	paths, ok := asMap(raw["paths"])
-	if !ok {
-		return nil, fmt.Errorf("OpenAPI document has no paths object")
+	pathOps, webhookOps := partitionByKind(selected)
+
+	if len(pathOps) > 0 {
+		paths, ok := asMap(raw["paths"])
+		if !ok {
+			return nil, fmt.Errorf("OpenAPI document has no paths object")
+		}
+		miniPaths, err := buildPathContainer(paths, pathOps)
+		if err != nil {
+			return nil, err
+		}
+		mini.Set("paths", miniPaths)
+	}
+	if len(webhookOps) > 0 {
+		webhooks, ok := asMap(raw["webhooks"])
+		if !ok {
+			return nil, fmt.Errorf("OpenAPI document has no webhooks object")
+		}
+		miniWebhooks, err := buildPathContainer(webhooks, webhookOps)
+		if err != nil {
+			return nil, err
+		}
+		mini.Set("webhooks", miniWebhooks)
 	}
 
-	miniPaths := ordered.New()
+	filterTags(mini, raw, selected)
+	if err := includeReachableComponents(mini, raw); err != nil {
+		return nil, err
+	}
+	return mini, nil
+}
+
+func partitionByKind(selected []catalog.Operation) (paths, webhooks []catalog.Operation) {
 	for _, op := range selected {
-		pathItem, ok := asMap(paths[op.Path])
+		if op.Kind == catalog.KindWebhook {
+			webhooks = append(webhooks, op)
+		} else {
+			paths = append(paths, op)
+		}
+	}
+	return
+}
+
+func buildPathContainer(source map[string]any, ops []catalog.Operation) (*ordered.Map, error) {
+	out := ordered.New()
+	for _, op := range ops {
+		pathItem, ok := asMap(source[op.Path])
 		if !ok {
 			return nil, fmt.Errorf("operation not found: %s", op.ID)
 		}
@@ -49,12 +88,12 @@ func Extract(raw map[string]any, selected []catalog.Operation, opts Options) (*o
 		}
 
 		var target *ordered.Map
-		if existing, ok := miniPaths.Get(op.Path); ok {
+		if existing, ok := out.Get(op.Path); ok {
 			target, _ = existing.(*ordered.Map)
 		}
 		if target == nil {
 			target = ordered.New()
-			miniPaths.Set(op.Path, target)
+			out.Set(op.Path, target)
 		}
 		for _, field := range []string{"summary", "description", "servers", "parameters"} {
 			if value, exists := pathItem[field]; exists {
@@ -63,13 +102,7 @@ func Extract(raw map[string]any, selected []catalog.Operation, opts Options) (*o
 		}
 		target.Set(method, operation)
 	}
-	mini.Set("paths", miniPaths)
-
-	filterTags(mini, raw, selected)
-	if err := includeReachableComponents(mini, raw); err != nil {
-		return nil, err
-	}
-	return mini, nil
+	return out, nil
 }
 
 func copyRoot(dst *ordered.Map, src map[string]any, key string) {

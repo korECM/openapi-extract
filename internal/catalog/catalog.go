@@ -18,38 +18,69 @@ type Operation struct {
 	Tags        []string `json:"tags,omitempty" yaml:"tags,omitempty"`
 	Deprecated  bool     `json:"deprecated,omitempty" yaml:"deprecated,omitempty"`
 	Security    []string `json:"security,omitempty" yaml:"security,omitempty"`
+	// Kind is "operation" for path-mounted endpoints and "webhook" for
+	// OpenAPI 3.1 top-level webhooks. Path holds the webhook name in the
+	// latter case.
+	Kind string `json:"kind,omitempty" yaml:"kind,omitempty"`
 }
+
+const (
+	KindOperation = "operation"
+	KindWebhook   = "webhook"
+)
 
 var Methods = []string{"get", "put", "post", "delete", "options", "head", "patch", "trace"}
 
 func Build(doc *openapi3.T) []Operation {
-	paths := doc.Paths.Map()
-	pathNames := make([]string, 0, len(paths))
-	for path := range paths {
-		pathNames = append(pathNames, path)
-	}
-	sort.Strings(pathNames)
-
 	ops := make([]Operation, 0)
-	for _, path := range pathNames {
-		item := paths[path]
-		for _, method := range Methods {
-			op := operationForMethod(item, method)
-			if op == nil {
-				continue
-			}
-			ops = append(ops, Operation{
-				ID:          IDFor(method, path),
-				Method:      strings.ToUpper(method),
-				Path:        path,
-				OperationID: op.OperationID,
-				Summary:     op.Summary,
-				Description: firstNonEmptyLine(op.Description),
-				Tags:        append([]string(nil), op.Tags...),
-				Deprecated:  op.Deprecated,
-				Security:    operationSecurityNames(op.Security, doc.Security),
-			})
+
+	if doc.Paths != nil {
+		paths := doc.Paths.Map()
+		pathNames := make([]string, 0, len(paths))
+		for path := range paths {
+			pathNames = append(pathNames, path)
 		}
+		sort.Strings(pathNames)
+		for _, path := range pathNames {
+			ops = append(ops, operationsFromPathItem(paths[path], path, "", doc.Security, IDFor)...)
+		}
+	}
+
+	if len(doc.Webhooks) > 0 {
+		names := make([]string, 0, len(doc.Webhooks))
+		for name := range doc.Webhooks {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			ops = append(ops, operationsFromPathItem(doc.Webhooks[name], name, KindWebhook, doc.Security, WebhookIDFor)...)
+		}
+	}
+	return ops
+}
+
+func operationsFromPathItem(item *openapi3.PathItem, key, kind string, docSec openapi3.SecurityRequirements, id func(method, key string) string) []Operation {
+	if item == nil {
+		return nil
+	}
+	ops := make([]Operation, 0, len(Methods))
+	for _, method := range Methods {
+		op := operationForMethod(item, method)
+		if op == nil {
+			continue
+		}
+		ops = append(ops, Operation{
+			ID:          id(method, key),
+			Method:      strings.ToUpper(method),
+			Path:        key,
+			OperationID: op.OperationID,
+			Summary:     op.Summary,
+			Description: firstNonEmptyLine(op.Description),
+			Tags:        append([]string(nil), op.Tags...),
+			Deprecated:  op.Deprecated,
+			Security:    operationSecurityNames(op.Security, docSec),
+			Kind:        kind,
+		})
 	}
 	return ops
 }
@@ -173,6 +204,10 @@ func selectorKeyFromString(selector string) string {
 
 func IDFor(method, path string) string {
 	return strings.ToLower(method) + "_" + path
+}
+
+func WebhookIDFor(method, name string) string {
+	return "webhook_" + name + "_" + strings.ToLower(method)
 }
 
 // normalizeID lowercases the method portion of an id (the part before the

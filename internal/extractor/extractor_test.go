@@ -218,6 +218,68 @@ paths:
 	}
 }
 
+func TestExtractIncludesWebhooks(t *testing.T) {
+	const source = `
+openapi: 3.1.0
+info:
+  title: Test API
+  version: 1.0.0
+paths: {}
+webhooks:
+  player.verify:
+    post:
+      operationId: playerVerify
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyPayload"
+      responses:
+        "200":
+          description: ok
+components:
+  schemas:
+    VerifyPayload:
+      type: object
+      properties:
+        playerId:
+          type: string
+`
+	loaded, err := specio.Load("-", strings.NewReader(source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ops := catalog.Build(loaded.Doc)
+	var webhookID string
+	for _, op := range ops {
+		if op.Kind == catalog.KindWebhook {
+			webhookID = op.ID
+			break
+		}
+	}
+	if webhookID == "" {
+		t.Fatal("webhook operation not surfaced in catalog")
+	}
+	selected, err := catalog.Find(ops, []string{webhookID}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mini, err := Extract(loaded.Raw, selected.Operations, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	webhooks := mustOrderedMap(t, mini, "webhooks")
+	hook := mustOrderedMap(t, webhooks, "player.verify")
+	if _, ok := hook.Get("post"); !ok {
+		t.Fatal("webhook post operation missing")
+	}
+	components := mustOrderedMap(t, mini, "components")
+	schemas := mustOrderedMap(t, components, "schemas")
+	if _, ok := schemas.Get("VerifyPayload"); !ok {
+		t.Fatal("webhook-referenced schema missing")
+	}
+}
+
 type orderedGetter interface {
 	Get(string) (any, bool)
 	Len() int
