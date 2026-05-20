@@ -54,6 +54,8 @@ func runList(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	var tagFilter repeated
 	fs.Var(&tagFilter, "tag", "filter operations by tag (case-insensitive, repeatable, OR semantics)")
 	maxColWidth := fs.Int("max-col-width", 0, "truncate text-column cells to N runes with ellipsis (0 = no limit)")
+	noCache := fs.Bool("no-cache", false, "bypass the on-disk URL cache for this request")
+	refreshCache := fs.Bool("refresh-cache", false, "ignore the cached URL response and overwrite it")
 	if err := fs.Parse(flagArgs); err != nil {
 		return 2
 	}
@@ -62,7 +64,7 @@ func runList(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	loaded, err := specio.Load(source, stdin)
+	loaded, err := specio.LoadWithOptions(source, stdin, specio.Options{NoCache: *noCache, RefreshCache: *refreshCache})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -312,6 +314,8 @@ func runExtract(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	outputPath := fs.String("output", "", "write mini spec to file")
 	stripInfo := fs.Bool("strip-info-description", false, "drop info.description from mini spec")
 	keepInfo := fs.Bool("keep-info-description", false, "keep info.description even when --stdout default would strip it")
+	noCache := fs.Bool("no-cache", false, "bypass the on-disk URL cache for this request")
+	refreshCache := fs.Bool("refresh-cache", false, "ignore the cached URL response and overwrite it")
 	if err := fs.Parse(flagArgs); err != nil {
 		return 2
 	}
@@ -328,7 +332,7 @@ func runExtract(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	loaded, err := specio.Load(source, stdin)
+	loaded, err := specio.LoadWithOptions(source, stdin, specio.Options{NoCache: *noCache, RefreshCache: *refreshCache})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -438,6 +442,13 @@ Flags:
   --max-col-width N      truncate text cells to N runes with ellipsis (default 0 = no limit)
   --no-header            hide the header row in text output
   --no-color             disable ANSI colors in text output
+  --no-cache             bypass the on-disk URL cache for this request
+  --refresh-cache        ignore and overwrite any cached URL response
+
+Caching:
+  URL fetches are cached under $OPENAPI_EXTRACT_CACHE_DIR (default
+  os.UserCacheDir() + /openapi-extract). Repeat fetches send ETag /
+  Last-Modified headers so the server can answer 304 Not Modified.
 
 Examples:
   openapi-extract list api.yaml --format json
@@ -468,6 +479,8 @@ Other flags:
   --format yaml|json     output format (default yaml)
   --strip-info-description   drop info.description from the mini spec
   --keep-info-description    keep info.description (overrides the --stdout default)
+  --no-cache                 bypass the on-disk URL cache for this request
+  --refresh-cache            ignore and overwrite any cached URL response
 
 Examples:
   openapi-extract extract api.yaml --id 'get_/v1/orders' --stdout

@@ -58,6 +58,67 @@ paths:
 	}
 }
 
+func TestLoadURLCacheServesNotModified(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info:
+  title: Cached
+  version: 1.0.0
+paths:
+  /a:
+    get:
+      responses:
+        "200":
+          description: ok
+`
+	t.Setenv("OPENAPI_EXTRACT_CACHE_DIR", t.TempDir())
+
+	oldClient := httpClient
+	calls := 0
+	var lastIfNoneMatch string
+	httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		lastIfNoneMatch = req.Header.Get("If-None-Match")
+		if calls == 1 {
+			header := http.Header{}
+			header.Set("ETag", "\"v1\"")
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Status:     "200 OK",
+				Body:       io.NopCloser(strings.NewReader(source)),
+				Header:     header,
+				Request:    req,
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusNotModified,
+			Status:     "304 Not Modified",
+			Body:       io.NopCloser(strings.NewReader("")),
+			Header:     make(http.Header),
+			Request:    req,
+		}, nil
+	})}
+	t.Cleanup(func() { httpClient = oldClient })
+
+	first, err := Load("https://example.com/openapi.yaml", strings.NewReader(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := Load("https://example.com/openapi.yaml", strings.NewReader(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Doc.Info.Title != "Cached" || second.Doc.Info.Title != "Cached" {
+		t.Fatal("expected the same document title from both loads")
+	}
+	if calls != 2 {
+		t.Fatalf("expected 2 HTTP calls (1 fetch + 1 conditional), got %d", calls)
+	}
+	if lastIfNoneMatch != "\"v1\"" {
+		t.Fatalf("second request should send If-None-Match, got %q", lastIfNoneMatch)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
