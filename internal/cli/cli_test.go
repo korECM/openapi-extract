@@ -397,6 +397,204 @@ paths:
 	}
 }
 
+func TestVersionFlag(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := Run([]string{"--version"}, strings.NewReader(""), &out, &errBuf, RunOptions{Version: "v9.9.9"})
+	if code != 0 {
+		t.Fatalf("--version exit code = %d (stderr=%s)", code, errBuf.String())
+	}
+	if !strings.Contains(out.String(), "v9.9.9") {
+		t.Fatalf("--version did not echo injected version: %q", out.String())
+	}
+}
+
+func TestNoArgsExitsWithUsage(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := Run(nil, strings.NewReader(""), &out, &errBuf)
+	if code != 2 {
+		t.Fatalf("no-args exit code = %d, want 2", code)
+	}
+	if !strings.Contains(errBuf.String(), "missing OpenAPI source") {
+		t.Fatalf("expected missing-source error in stderr: %q", errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), "Usage:") {
+		t.Fatalf("expected Usage block on stderr: %q", errBuf.String())
+	}
+}
+
+func TestListExcludeTag(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info: { title: T, version: 1.0.0 }
+paths:
+  /a: { get: { tags: [Keep], responses: { "200": { description: ok } } } }
+  /b: { get: { tags: [Drop], responses: { "200": { description: ok } } } }
+`
+	var out bytes.Buffer
+	if code := Run([]string{"list", "-", "--format", "json", "--exclude-tag", "drop"}, strings.NewReader(source), &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	body := out.String()
+	if !strings.Contains(body, `"id": "get_/a"`) {
+		t.Fatalf("kept op missing: %s", body)
+	}
+	if strings.Contains(body, `"id": "get_/b"`) {
+		t.Fatalf("excluded op leaked: %s", body)
+	}
+}
+
+func TestListFormatTree(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info: { title: T, version: 1.0.0 }
+paths:
+  /orders:
+    get: { summary: List, responses: { "200": { description: ok } } }
+    post: { summary: Create, responses: { "201": { description: created } } }
+`
+	var out bytes.Buffer
+	if code := Run([]string{"list", "-", "--format", "tree", "--no-color"}, strings.NewReader(source), &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	body := out.String()
+	if !strings.Contains(body, "/orders") {
+		t.Fatalf("path header missing: %s", body)
+	}
+	if !strings.Contains(body, "├─") || !strings.Contains(body, "└─") {
+		t.Fatalf("expected tree branches: %s", body)
+	}
+}
+
+func TestListJSONIncludesRequestBodyAndResponseCodes(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info: { title: T, version: 1.0.0 }
+paths:
+  /orders:
+    post:
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object } } }
+      responses:
+        "201": { description: created }
+        "400": { description: bad }
+        "default": { description: other }
+`
+	var out bytes.Buffer
+	if code := Run([]string{"list", "-", "--format", "json"}, strings.NewReader(source), &out, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	body := out.String()
+	if !strings.Contains(body, `"hasRequestBody": true`) {
+		t.Fatalf("hasRequestBody missing: %s", body)
+	}
+	if !strings.Contains(body, `"requestBodyRequired": true`) {
+		t.Fatalf("requestBodyRequired missing: %s", body)
+	}
+	// numeric codes ascending, default last
+	idx201 := strings.Index(body, `"201"`)
+	idx400 := strings.Index(body, `"400"`)
+	idxDef := strings.Index(body, `"default"`)
+	if !(idx201 >= 0 && idx400 > idx201 && idxDef > idx400) {
+		t.Fatalf("responseCodes ordering wrong: %s", body)
+	}
+}
+
+func TestExtractSummaryWrittenToStderr(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info: { title: T, version: 1.0.0 }
+paths:
+  /health: { get: { responses: { "200": { description: ok } } } }
+`
+	var out, errBuf bytes.Buffer
+	if code := Run([]string{"extract", "-", "--id", "get_/health", "--stdout"}, strings.NewReader(source), &out, &errBuf); code != 0 {
+		t.Fatalf("exit code = %d (stderr=%s)", code, errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), "extracted 1 op") {
+		t.Fatalf("summary missing from stderr: %q", errBuf.String())
+	}
+}
+
+func TestExtractQuietSuppressesSummary(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info: { title: T, version: 1.0.0 }
+paths:
+  /health: { get: { responses: { "200": { description: ok } } } }
+`
+	var out, errBuf bytes.Buffer
+	if code := Run([]string{"extract", "-", "--id", "get_/health", "--stdout", "--quiet"}, strings.NewReader(source), &out, &errBuf); code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if errBuf.Len() != 0 {
+		t.Fatalf("expected silent stderr with --quiet: %q", errBuf.String())
+	}
+}
+
+func TestExtractJSONFormatEmitsJSONWarningsAndSummary(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info: { title: T, version: 1.0.0 }
+paths:
+  /health: { get: { responses: { "200": { description: ok } } } }
+`
+	var out, errBuf bytes.Buffer
+	args := []string{"extract", "-", "--id", "get_/health", "--id", "get_/nope", "--format", "json", "--stdout"}
+	if code := Run(args, strings.NewReader(source), &out, &errBuf); code != 0 {
+		t.Fatalf("exit code = %d (stderr=%s)", code, errBuf.String())
+	}
+	body := errBuf.String()
+	if !strings.Contains(body, `"kind":"missing_id"`) {
+		t.Fatalf("expected JSON warning, got: %q", body)
+	}
+	if !strings.Contains(body, `"kind":"summary"`) {
+		t.Fatalf("expected JSON summary, got: %q", body)
+	}
+}
+
+func TestExtractPostSelectionFiltersNarrowTagPull(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info: { title: T, version: 1.0.0 }
+paths:
+  /orders:
+    get: { tags: [Orders], responses: { "200": { description: ok } } }
+    post: { tags: [Orders], responses: { "201": { description: created } } }
+  /orders/{id}:
+    delete: { tags: [Orders], deprecated: true, responses: { "204": { description: gone } } }
+`
+	var out, errBuf bytes.Buffer
+	args := []string{"extract", "-", "--tag", "Orders", "--method", "GET,POST", "--no-deprecated", "--stdout"}
+	if code := Run(args, strings.NewReader(source), &out, &errBuf); code != 0 {
+		t.Fatalf("exit code = %d (stderr=%s)", code, errBuf.String())
+	}
+	body := out.String()
+	if !strings.Contains(body, "/orders:") {
+		t.Fatalf("/orders missing: %s", body)
+	}
+	if strings.Contains(body, "/orders/{id}") {
+		t.Fatalf("deprecated DELETE should be dropped by filters: %s", body)
+	}
+}
+
+func TestExtractEmptyAfterPostFiltersFails(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info: { title: T, version: 1.0.0 }
+paths:
+  /orders: { get: { tags: [Orders], responses: { "200": { description: ok } } } }
+`
+	var out, errBuf bytes.Buffer
+	args := []string{"extract", "-", "--tag", "Orders", "--method", "DELETE", "--stdout"}
+	if code := Run(args, strings.NewReader(source), &out, &errBuf); code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(errBuf.String(), "no operations matched after applying") {
+		t.Fatalf("expected post-filter error: %q", errBuf.String())
+	}
+}
+
 func TestListTextColumns(t *testing.T) {
 	const source = `
 openapi: 3.0.3
