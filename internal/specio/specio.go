@@ -19,6 +19,9 @@ import (
 type Loaded struct {
 	Doc *openapi3.T
 	Raw map[string]any
+	// RawBytes is the size in bytes of the source document as it was read,
+	// before normalization. Useful for reporting size reduction in the CLI.
+	RawBytes int
 }
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
@@ -28,6 +31,10 @@ var httpClient = &http.Client{Timeout: 30 * time.Second}
 type Options struct {
 	NoCache      bool
 	RefreshCache bool
+	// CacheLogger, when non-nil, receives one short status message per URL
+	// fetch describing cache behavior (e.g. "hit (304)", "miss → 200 stored",
+	// "bypassed"). Local file / stdin sources do not emit messages.
+	CacheLogger func(msg string)
 }
 
 func Load(source string, stdin io.Reader) (*Loaded, error) {
@@ -70,7 +77,7 @@ func LoadWithOptions(source string, stdin io.Reader, opts Options) (*Loaded, err
 		return nil, fmt.Errorf("failed to decode OpenAPI document: %w", err)
 	}
 
-	return &Loaded{Doc: doc, Raw: raw}, nil
+	return &Loaded{Doc: doc, Raw: raw, RawBytes: len(data)}, nil
 }
 
 // summarizeParseError trims internal Go type names and multi-error chains down
@@ -93,7 +100,12 @@ func summarizeParseError(err error) string {
 }
 
 func readURL(source string, opts Options) ([]byte, error) {
+	log := opts.CacheLogger
+	if log == nil {
+		log = func(string) {}
+	}
 	if opts.NoCache {
+		log("bypassed (--no-cache)")
 		return fetchFresh(source, nil)
 	}
 
@@ -126,6 +138,7 @@ func readURL(source string, opts Options) ([]byte, error) {
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		if hasCache {
+			log("stale-hit (network error)")
 			return cached, nil
 		}
 		return nil, err
@@ -133,6 +146,7 @@ func readURL(source string, opts Options) ([]byte, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotModified && hasCache {
+		log("hit (304 Not Modified)")
 		return cached, nil
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -148,6 +162,15 @@ func readURL(source string, opts Options) ([]byte, error) {
 			LastModified: resp.Header.Get("Last-Modified"),
 			FetchedAt:    time.Now().UTC().Format(time.RFC3339),
 		})
+		if opts.RefreshCache {
+			log(fmt.Sprintf("refresh → %s, stored (%d bytes)", resp.Status, len(body)))
+		} else if hasCache {
+			log(fmt.Sprintf("revalidated → %s, stored (%d bytes)", resp.Status, len(body)))
+		} else {
+			log(fmt.Sprintf("miss → %s, stored (%d bytes)", resp.Status, len(body)))
+		}
+	} else {
+		log(fmt.Sprintf("miss → %s (cache unavailable)", resp.Status))
 	}
 	return body, nil
 }
