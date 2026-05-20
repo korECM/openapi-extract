@@ -140,24 +140,42 @@ npx skills add korECM/openapi-extract --skill openapi-extract
 operation 목록 출력:
 
 ```bash
-openapi-extract list <openapi.yaml|url|-> [--format text|json] [--columns id,method,path,summary] [--no-header] [--no-color]
+openapi-extract list <openapi.yaml|url|-> [--format text|json] \
+  [--columns id,method,path,summary,description,tags,deprecated,security] \
+  [--tag NAME] [--max-col-width N] [--no-header] [--no-color] \
+  [--no-cache] [--refresh-cache]
 ```
 
-text 출력은 컬럼 선택을 지원합니다.
+text 출력은 컬럼 선택을 지원합니다. JSON 출력에는 첫 줄 description, `deprecated` 플래그, 해석된 `security` scheme 이름이 함께 실리므로 catalog 단계에서 "deprecated된 op 빼고 보여줘"나 "auth 필요한 op만"이 바로 가능합니다.
 
 ```bash
 openapi-extract list ./openapi.yaml --columns method,path,tags,operationId
 openapi-extract list ./openapi.yaml --columns all
+openapi-extract list ./openapi.yaml --tag Orders --tag Payments
+openapi-extract list https://docs.example.com/openapi.yaml --max-col-width 60
 ```
+
+`openapi-extract list --help`와 `openapi-extract extract --help`는 전체 플래그 레퍼런스를 stdout으로 출력하고 exit 0으로 종료합니다.
 
 선택한 operation 추출:
 
 ```bash
 openapi-extract extract <openapi.yaml|url|-> \
-  (--id ID | --select 'METHOD /path') \
+  (--id ID | --select 'METHOD /path' | --tag NAME) \
   (--stdout | --copy | --output mini.openapi.yaml) \
-  [--format yaml|json]
+  [--format yaml|json] \
+  [--strip-info-description | --keep-info-description] \
+  [--no-cache] [--refresh-cache]
 ```
+
+참고:
+
+- `--id`는 method 부분이 case-insensitive입니다. `POST_/v1/orders`와 `post_/v1/orders`는 같은 operation으로 해석됩니다. path 부분은 대소문자를 그대로 유지합니다.
+- 없는 id가 섞여 있어도 전체가 실패하지 않습니다. 못 찾은 id는 stderr에 warning으로 출력되고, 성공한 operation만으로 mini spec이 만들어집니다. 모두 miss일 때만 exit 1입니다.
+- `--tag Orders`는 해당 tag의 모든 operation을 mini spec에 끌고 옵니다.
+- OpenAPI 3.1의 top-level `webhooks`(예: `player.verify`)는 `webhook_<name>_<method>` 형식의 id로 catalog에 노출되며 `webhooks:` 블록으로 추출됩니다.
+- `--stdout`은 기본적으로 `info.description`을 제거해서 인증/rate-limit 마크다운이 LLM prompt를 부풀리지 않게 합니다. `--output`, `--copy`는 기본 유지입니다. `--keep-info-description`, `--strip-info-description`으로 양방향 override 가능합니다.
+- URL을 입력으로 쓰면 `$OPENAPI_EXTRACT_CACHE_DIR`(기본 `os.UserCacheDir()/openapi-extract`)에 응답이 캐시됩니다. 반복 호출 시 `ETag`/`Last-Modified`로 conditional fetch를 보내고 서버가 304를 주면 캐시를 그대로 씁니다. `--no-cache`는 캐시를 건너뛰고, `--refresh-cache`는 캐시를 덮어씁니다.
 
 입력:
 

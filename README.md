@@ -140,24 +140,57 @@ See [docs/agent-integrations.md](docs/agent-integrations.md) for install and usa
 List operations:
 
 ```bash
-openapi-extract list <openapi.yaml|url|-> [--format text|json] [--columns id,method,path,summary] [--no-header] [--no-color]
+openapi-extract list <openapi.yaml|url|-> [--format text|json] \
+  [--columns id,method,path,summary,description,tags,deprecated,security] \
+  [--tag NAME] [--max-col-width N] [--no-header] [--no-color] \
+  [--no-cache] [--refresh-cache]
 ```
 
-Text output supports selectable columns:
+Text output supports selectable columns. JSON output now also carries the
+operation's first-line description, `deprecated` flag, and the resolved
+`security` scheme names so the catalog stage alone can answer "any
+deprecated ops?" or "which need auth?".
 
 ```bash
 openapi-extract list ./openapi.yaml --columns method,path,tags,operationId
 openapi-extract list ./openapi.yaml --columns all
+openapi-extract list ./openapi.yaml --tag Orders --tag Payments
+openapi-extract list https://docs.example.com/openapi.yaml --max-col-width 60
 ```
+
+`openapi-extract list --help` and `openapi-extract extract --help` print full
+flag references and exit with code 0.
 
 Extract selected operations:
 
 ```bash
 openapi-extract extract <openapi.yaml|url|-> \
-  (--id ID | --select 'METHOD /path') \
+  (--id ID | --select 'METHOD /path' | --tag NAME) \
   (--stdout | --copy | --output mini.openapi.yaml) \
-  [--format yaml|json]
+  [--format yaml|json] \
+  [--strip-info-description | --keep-info-description] \
+  [--no-cache] [--refresh-cache]
 ```
+
+Notes:
+
+- `--id` is case-insensitive on the method portion (`POST_/v1/orders` and
+  `post_/v1/orders` resolve the same operation). Paths stay case-sensitive.
+- Missing ids no longer abort the call. Each miss is printed to stderr as a
+  warning and the successful subset is still extracted; the command only
+  fails when zero operations matched.
+- `--tag Orders` pulls every operation under that tag into the mini spec.
+- OpenAPI 3.1 top-level `webhooks` (e.g. `player.verify`) appear in the
+  catalog with ids of the form `webhook_<name>_<method>` and extract into a
+  matching `webhooks:` block.
+- `--stdout` strips `info.description` by default so the marketing/auth/
+  rate-limit preamble does not bloat AI prompts. `--output` and `--copy`
+  keep it. Use `--keep-info-description` / `--strip-info-description` to
+  override either way.
+- URL fetches are cached under `$OPENAPI_EXTRACT_CACHE_DIR` (default
+  `os.UserCacheDir()/openapi-extract`) and revalidated with `ETag` /
+  `Last-Modified`. `--no-cache` skips the cache; `--refresh-cache`
+  overwrites it.
 
 Input sources:
 
