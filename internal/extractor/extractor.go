@@ -11,6 +11,15 @@ import (
 
 type Options struct {
 	StripInfoDescription bool
+	// MaxEnum truncates JSON Schema `enum` arrays whose length exceeds the
+	// limit. A value of 0 or less disables truncation. When an array is
+	// truncated, an `x-enum-truncated` extension is added alongside it
+	// recording the kept and total counts.
+	MaxEnum int
+	// DropExamples removes `example` and `examples` keys at every level of
+	// the mini spec. Useful when shipping the spec to LLMs that do not need
+	// sample payloads.
+	DropExamples bool
 }
 
 func Extract(raw map[string]any, selected []catalog.Operation, opts Options) (*ordered.Map, error) {
@@ -60,7 +69,88 @@ func Extract(raw map[string]any, selected []catalog.Operation, opts Options) (*o
 	if err := includeReachableComponents(mini, raw); err != nil {
 		return nil, err
 	}
-	return mini, nil
+	return applyPostProcess(mini, opts), nil
+}
+
+func applyPostProcess(mini *ordered.Map, opts Options) *ordered.Map {
+	if !opts.DropExamples && opts.MaxEnum <= 0 {
+		return mini
+	}
+	transformed := postProcess(mini, opts)
+	out, _ := transformed.(*ordered.Map)
+	if out == nil {
+		return mini
+	}
+	return out
+}
+
+func postProcess(node any, opts Options) any {
+	switch typed := node.(type) {
+	case *ordered.Map:
+		out := ordered.New()
+		for _, key := range typed.Keys {
+			if opts.DropExamples && (key == "example" || key == "examples") {
+				continue
+			}
+			out.Set(key, postProcess(typed.Values[key], opts))
+		}
+		truncateEnum(out, opts)
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(typed))
+		for k, v := range typed {
+			if opts.DropExamples && (k == "example" || k == "examples") {
+				continue
+			}
+			out[k] = postProcess(v, opts)
+		}
+		truncateEnumMap(out, opts)
+		return out
+	case []any:
+		out := make([]any, len(typed))
+		for i, item := range typed {
+			out[i] = postProcess(item, opts)
+		}
+		return out
+	default:
+		return typed
+	}
+}
+
+func truncateEnum(parent *ordered.Map, opts Options) {
+	if opts.MaxEnum <= 0 {
+		return
+	}
+	enumVal, ok := parent.Values["enum"]
+	if !ok {
+		return
+	}
+	list, ok := enumVal.([]any)
+	if !ok || len(list) <= opts.MaxEnum {
+		return
+	}
+	truncated := make([]any, opts.MaxEnum)
+	copy(truncated, list[:opts.MaxEnum])
+	parent.Values["enum"] = truncated
+	parent.Set("x-enum-truncated", enumTruncationMarker(opts.MaxEnum, len(list)))
+}
+
+func truncateEnumMap(parent map[string]any, opts Options) {
+	if opts.MaxEnum <= 0 {
+		return
+	}
+	list, ok := parent["enum"].([]any)
+	if !ok || len(list) <= opts.MaxEnum {
+		return
+	}
+	truncated := make([]any, opts.MaxEnum)
+	copy(truncated, list[:opts.MaxEnum])
+	parent["enum"] = truncated
+	parent["x-enum-truncated"] = enumTruncationMarker(opts.MaxEnum, len(list))
+}
+
+func enumTruncationMarker(kept, total int) map[string]any {
+	return map[string]any{"kept": kept, "total": total}
 }
 
 func partitionByKind(selected []catalog.Operation) (paths, webhooks []catalog.Operation) {

@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/korECM/openapi-extract/internal/catalog"
+	"github.com/korECM/openapi-extract/internal/ordered"
+	"github.com/korECM/openapi-extract/internal/output"
 	"github.com/korECM/openapi-extract/internal/specio"
 )
 
@@ -278,6 +280,202 @@ components:
 	if _, ok := schemas.Get("VerifyPayload"); !ok {
 		t.Fatal("webhook-referenced schema missing")
 	}
+}
+
+func TestExtractTruncatesLargeEnumWithMarker(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info:
+  title: Test API
+  version: 1.0.0
+paths:
+  /pay:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                currency:
+                  type: string
+                  enum: [USD, EUR, JPY, KRW, GBP, CNY, AUD, CAD, CHF, SEK]
+      responses:
+        "200":
+          description: ok
+`
+	loaded, err := specio.Load("-", strings.NewReader(source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ops := catalog.Build(loaded.Doc)
+	selected, err := catalog.Find(ops, []string{"post_/pay"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mini, err := Extract(loaded.Raw, selected.Operations, Options{MaxEnum: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := mustOrderedMap(t, mini, "paths")
+	pay := mustOrderedMap(t, paths, "/pay")
+	post, ok := pay.Get("post")
+	if !ok {
+		t.Fatal("post operation missing")
+	}
+	currency := dig(t, post, "requestBody", "content", "application/json", "schema", "properties", "currency")
+	enumVal, ok := getField(currency, "enum")
+	if !ok {
+		t.Fatalf("enum missing on currency schema: %#v", currency)
+	}
+	enumList, ok := enumVal.([]any)
+	if !ok {
+		t.Fatalf("enum is %T, want []any", enumVal)
+	}
+	if len(enumList) != 3 {
+		t.Fatalf("enum length = %d, want 3", len(enumList))
+	}
+	markerVal, ok := getField(currency, "x-enum-truncated")
+	if !ok {
+		t.Fatalf("x-enum-truncated marker missing: %#v", currency)
+	}
+	markerMap, ok := markerVal.(map[string]any)
+	if !ok {
+		t.Fatalf("marker is %T, want map[string]any", markerVal)
+	}
+	if kept, _ := markerMap["kept"].(int); kept != 3 {
+		t.Fatalf("marker.kept = %v, want 3", markerMap["kept"])
+	}
+	if total, _ := markerMap["total"].(int); total != 10 {
+		t.Fatalf("marker.total = %v, want 10", markerMap["total"])
+	}
+}
+
+func TestExtractLeavesSmallEnumsAlone(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info:
+  title: Test API
+  version: 1.0.0
+paths:
+  /pay:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                method:
+                  type: string
+                  enum: [card, cash]
+      responses:
+        "200":
+          description: ok
+`
+	loaded, err := specio.Load("-", strings.NewReader(source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ops := catalog.Build(loaded.Doc)
+	selected, err := catalog.Find(ops, []string{"post_/pay"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mini, err := Extract(loaded.Raw, selected.Operations, Options{MaxEnum: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	method := dig(t, mustOrderedMap(t, mustOrderedMap(t, mini, "paths"), "/pay"),
+		"post", "requestBody", "content", "application/json", "schema", "properties", "method")
+	if _, ok := getField(method, "x-enum-truncated"); ok {
+		t.Fatalf("small enum should not be marked truncated: %#v", method)
+	}
+}
+
+func TestExtractDropsExamplesAtEveryDepth(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info:
+  title: Test API
+  version: 1.0.0
+paths:
+  /pay:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example: { amount: 100 }
+              properties:
+                amount:
+                  type: integer
+                  example: 100
+            examples:
+              one:
+                value: { amount: 1 }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              example: { ok: true }
+`
+	loaded, err := specio.Load("-", strings.NewReader(source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ops := catalog.Build(loaded.Doc)
+	selected, err := catalog.Find(ops, []string{"post_/pay"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mini, err := Extract(loaded.Raw, selected.Operations, Options{DropExamples: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := yamlEncode(mini)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(body, "example:") || strings.Contains(body, "examples:") {
+		t.Fatalf("examples should be removed at every depth:\n%s", body)
+	}
+}
+
+func dig(t *testing.T, node any, keys ...string) any {
+	t.Helper()
+	cur := node
+	for _, key := range keys {
+		val, ok := getField(cur, key)
+		if !ok {
+			t.Fatalf("missing key %s in %#v", key, cur)
+		}
+		cur = val
+	}
+	return cur
+}
+
+func getField(node any, key string) (any, bool) {
+	switch typed := node.(type) {
+	case *ordered.Map:
+		return typed.Get(key)
+	case map[string]any:
+		v, ok := typed[key]
+		return v, ok
+	default:
+		return nil, false
+	}
+}
+
+func yamlEncode(value any) (string, error) {
+	data, err := output.Marshal(value, "yaml")
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 type orderedGetter interface {

@@ -142,6 +142,88 @@ func FilterByTags(ops []Operation, tags []string) []Operation {
 	return out
 }
 
+// FilterByMethods keeps ops whose HTTP method matches one of the requested
+// methods (case-insensitive). An empty methods slice returns ops as-is.
+func FilterByMethods(ops []Operation, methods []string) []Operation {
+	if len(methods) == 0 {
+		return ops
+	}
+	wanted := make(map[string]bool, len(methods))
+	for _, m := range methods {
+		for piece := range strings.SplitSeq(m, ",") {
+			piece = strings.TrimSpace(piece)
+			if piece == "" {
+				continue
+			}
+			wanted[strings.ToUpper(piece)] = true
+		}
+	}
+	if len(wanted) == 0 {
+		return ops
+	}
+	out := make([]Operation, 0, len(ops))
+	for _, op := range ops {
+		if wanted[strings.ToUpper(op.Method)] {
+			out = append(out, op)
+		}
+	}
+	return out
+}
+
+// FilterByPathPrefix keeps ops whose path starts with the given prefix.
+// Comparison is case-sensitive (URL paths are case-sensitive in OpenAPI).
+// An empty prefix returns ops as-is.
+func FilterByPathPrefix(ops []Operation, prefix string) []Operation {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		return ops
+	}
+	out := make([]Operation, 0, len(ops))
+	for _, op := range ops {
+		if strings.HasPrefix(op.Path, prefix) {
+			out = append(out, op)
+		}
+	}
+	return out
+}
+
+// FilterByGrep keeps ops where the case-insensitive pattern appears in
+// id, operationId, summary, or description. An empty pattern returns ops
+// as-is.
+func FilterByGrep(ops []Operation, pattern string) []Operation {
+	pattern = strings.TrimSpace(pattern)
+	if pattern == "" {
+		return ops
+	}
+	needle := strings.ToLower(pattern)
+	out := make([]Operation, 0, len(ops))
+	for _, op := range ops {
+		fields := []string{op.ID, op.OperationID, op.Summary, op.Description}
+		for _, f := range fields {
+			if f != "" && strings.Contains(strings.ToLower(f), needle) {
+				out = append(out, op)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// FilterExcludeDeprecated drops ops with Deprecated=true when exclude is
+// true. Passing false returns ops as-is.
+func FilterExcludeDeprecated(ops []Operation, exclude bool) []Operation {
+	if !exclude {
+		return ops
+	}
+	out := make([]Operation, 0, len(ops))
+	for _, op := range ops {
+		if !op.Deprecated {
+			out = append(out, op)
+		}
+	}
+	return out
+}
+
 // Find resolves ids and selects against the operation catalog.
 //
 // Missing entries are collected on FindResult.Missing instead of aborting the

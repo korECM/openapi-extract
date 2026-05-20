@@ -24,10 +24,17 @@ Built for two workflows:
 
 ## Install / Build
 
-Install the latest released commit:
+Install the latest tagged release:
 
 ```bash
 go install github.com/korECM/openapi-extract@latest
+```
+
+Install the latest commit on `main` (useful when new flags landed since the
+last tag):
+
+```bash
+go install github.com/korECM/openapi-extract@main
 ```
 
 Make sure your Go bin directory is on `PATH`:
@@ -142,8 +149,16 @@ List operations:
 ```bash
 openapi-extract list <openapi.yaml|url|-> [--format text|json] \
   [--columns id,method,path,summary,description,tags,deprecated,security] \
-  [--tag NAME] [--max-col-width N] [--no-header] [--no-color] \
+  [--tag NAME] [--method NAMES] [--path-prefix /v1] [--grep PATTERN] \
+  [--no-deprecated] [--max-col-width N] [--no-header] [--no-color] \
   [--no-cache] [--refresh-cache]
+```
+
+Filters combine with AND across types and OR within each repeatable type:
+
+```bash
+openapi-extract list ./openapi.yaml --method GET,POST --path-prefix /v1/orders
+openapi-extract list ./openapi.yaml --grep refund --no-deprecated
 ```
 
 Text output supports selectable columns. JSON output now also carries the
@@ -169,6 +184,7 @@ openapi-extract extract <openapi.yaml|url|-> \
   (--stdout | --copy | --output mini.openapi.yaml) \
   [--format yaml|json] \
   [--strip-info-description | --keep-info-description] \
+  [--max-enum N] [--drop-examples] \
   [--no-cache] [--refresh-cache]
 ```
 
@@ -183,10 +199,17 @@ Notes:
 - OpenAPI 3.1 top-level `webhooks` (e.g. `player.verify`) appear in the
   catalog with ids of the form `webhook_<name>_<method>` and extract into a
   matching `webhooks:` block.
-- `--stdout` strips `info.description` by default so the marketing/auth/
-  rate-limit preamble does not bloat AI prompts. `--output` and `--copy`
-  keep it. Use `--keep-info-description` / `--strip-info-description` to
-  override either way.
+- `info.description` is stripped from every mini spec by default so the
+  marketing/auth/rate-limit preamble does not bloat AI prompts, regardless
+  of `--stdout`, `--copy`, or `--output`. Use `--keep-info-description` to
+  preserve it; `--strip-info-description` is the (default) explicit form.
+- `--max-enum N` truncates JSON Schema `enum` arrays longer than N to
+  their first N entries and writes a sibling `x-enum-truncated: {kept,
+  total}` marker. Useful for ISO-4217/country/locale enums that bloat
+  prompts.
+- `--drop-examples` removes `example` and `examples` keys at every depth
+  of the mini spec. Useful when shipping the spec to LLMs that do not
+  need sample payloads.
 - URL fetches are cached under `$OPENAPI_EXTRACT_CACHE_DIR` (default
   `os.UserCacheDir()/openapi-extract`) and revalidated with `ETag` /
   `Last-Modified`. `--no-cache` skips the cache; `--refresh-cache`

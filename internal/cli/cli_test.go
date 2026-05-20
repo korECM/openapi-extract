@@ -278,7 +278,7 @@ paths:
 	}
 }
 
-func TestExtractFileKeepsInfoDescriptionByDefault(t *testing.T) {
+func TestExtractFileStripsInfoDescriptionByDefault(t *testing.T) {
 	const source = `
 openapi: 3.0.3
 info:
@@ -300,8 +300,100 @@ paths:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "Long preamble") {
-		t.Fatalf("--output should keep info.description by default: %s", string(data))
+	if strings.Contains(string(data), "Long preamble") {
+		t.Fatalf("--output should strip info.description by default: %s", string(data))
+	}
+	if !strings.Contains(string(data), "title: Test API") {
+		t.Fatalf("info.title should remain: %s", string(data))
+	}
+
+	keepPath := t.TempDir() + "/mini-keep.yaml"
+	if code := Run([]string{"extract", "-", "--id", "get_/health", "--output", keepPath, "--keep-info-description"}, strings.NewReader(source), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("extract --output --keep-info-description exit code = %d", code)
+	}
+	keptData, err := os.ReadFile(keepPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(keptData), "Long preamble") {
+		t.Fatalf("--keep-info-description should preserve description: %s", string(keptData))
+	}
+}
+
+func TestListFiltersByMethodPathPrefixGrepAndDeprecated(t *testing.T) {
+	const source = `
+openapi: 3.0.3
+info:
+  title: Test API
+  version: 1.0.0
+paths:
+  /v1/orders:
+    get:
+      summary: List orders
+      responses:
+        "200":
+          description: ok
+    post:
+      summary: Create order
+      responses:
+        "200":
+          description: ok
+  /v1/orders/{id}/refund:
+    post:
+      summary: Refund an order
+      responses:
+        "200":
+          description: ok
+  /v1/players:
+    get:
+      summary: List players
+      responses:
+        "200":
+          description: ok
+  /v1/legacy:
+    get:
+      summary: legacy
+      deprecated: true
+      responses:
+        "200":
+          description: ok
+`
+	runList := func(extra ...string) string {
+		args := append([]string{"list", "-", "--format", "json"}, extra...)
+		var out bytes.Buffer
+		if code := Run(args, strings.NewReader(source), &out, &bytes.Buffer{}); code != 0 {
+			t.Fatalf("list %v exit code = %d", extra, code)
+		}
+		return out.String()
+	}
+
+	body := runList("--method", "GET")
+	if !strings.Contains(body, `"id": "get_/v1/orders"`) || strings.Contains(body, `"method": "POST"`) {
+		t.Fatalf("--method GET did not filter: %s", body)
+	}
+
+	body = runList("--method", "get,post", "--path-prefix", "/v1/orders")
+	if !strings.Contains(body, `"id": "get_/v1/orders"`) {
+		t.Fatalf("expected GET /v1/orders in output: %s", body)
+	}
+	if !strings.Contains(body, `"id": "post_/v1/orders"`) {
+		t.Fatalf("expected POST /v1/orders in output: %s", body)
+	}
+	if strings.Contains(body, `"id": "get_/v1/players"`) {
+		t.Fatalf("path-prefix should drop /v1/players: %s", body)
+	}
+
+	body = runList("--grep", "refund")
+	if !strings.Contains(body, `"id": "post_/v1/orders/{id}/refund"`) {
+		t.Fatalf("--grep refund missed the refund op: %s", body)
+	}
+	if strings.Contains(body, `"id": "get_/v1/orders"`) {
+		t.Fatalf("--grep refund should drop /v1/orders: %s", body)
+	}
+
+	body = runList("--no-deprecated")
+	if strings.Contains(body, `"id": "get_/v1/legacy"`) {
+		t.Fatalf("--no-deprecated should drop /v1/legacy: %s", body)
 	}
 }
 

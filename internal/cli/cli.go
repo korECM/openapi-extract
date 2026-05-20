@@ -53,6 +53,11 @@ func runList(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	noColor := fs.Bool("no-color", false, "disable ANSI colors in text output")
 	var tagFilter repeated
 	fs.Var(&tagFilter, "tag", "filter operations by tag (case-insensitive, repeatable, OR semantics)")
+	var methodFilter repeated
+	fs.Var(&methodFilter, "method", "filter by HTTP method (case-insensitive, comma-separated or repeatable, OR semantics)")
+	pathPrefix := fs.String("path-prefix", "", "keep only operations whose path starts with this prefix (case-sensitive)")
+	grep := fs.String("grep", "", "case-insensitive substring match against id, operationId, summary, description")
+	noDeprecated := fs.Bool("no-deprecated", false, "drop deprecated operations")
 	maxColWidth := fs.Int("max-col-width", 0, "truncate text-column cells to N runes with ellipsis (0 = no limit)")
 	noCache := fs.Bool("no-cache", false, "bypass the on-disk URL cache for this request")
 	refreshCache := fs.Bool("refresh-cache", false, "ignore the cached URL response and overwrite it")
@@ -69,7 +74,12 @@ func runList(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	ops := catalog.FilterByTags(catalog.Build(loaded.Doc), tagFilter)
+	ops := catalog.Build(loaded.Doc)
+	ops = catalog.FilterByTags(ops, tagFilter)
+	ops = catalog.FilterByMethods(ops, methodFilter)
+	ops = catalog.FilterByPathPrefix(ops, *pathPrefix)
+	ops = catalog.FilterByGrep(ops, *grep)
+	ops = catalog.FilterExcludeDeprecated(ops, *noDeprecated)
 	switch *format {
 	case "json":
 		data, err := output.Marshal(ops, "json")
@@ -312,8 +322,10 @@ func runExtract(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	toStdout := fs.Bool("stdout", false, "write mini spec to stdout")
 	toCopy := fs.Bool("copy", false, "copy mini spec to clipboard")
 	outputPath := fs.String("output", "", "write mini spec to file")
-	stripInfo := fs.Bool("strip-info-description", false, "drop info.description from mini spec")
-	keepInfo := fs.Bool("keep-info-description", false, "keep info.description even when --stdout default would strip it")
+	stripInfo := fs.Bool("strip-info-description", false, "drop info.description from mini spec (default)")
+	keepInfo := fs.Bool("keep-info-description", false, "keep info.description in mini spec")
+	maxEnum := fs.Int("max-enum", 0, "truncate JSON Schema enum arrays longer than N entries (0 = unlimited)")
+	dropExamples := fs.Bool("drop-examples", false, "remove example and examples fields at every level")
 	noCache := fs.Bool("no-cache", false, "bypass the on-disk URL cache for this request")
 	refreshCache := fs.Bool("refresh-cache", false, "ignore the cached URL response and overwrite it")
 	if err := fs.Parse(flagArgs); err != nil {
@@ -372,7 +384,11 @@ func runExtract(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "no operations matched")
 		return 1
 	}
-	opts := extractor.Options{StripInfoDescription: resolveStripInfo(*stripInfo, *keepInfo, *toStdout)}
+	opts := extractor.Options{
+		StripInfoDescription: resolveStripInfo(*stripInfo, *keepInfo),
+		MaxEnum:              *maxEnum,
+		DropExamples:         *dropExamples,
+	}
 	mini, err := extractor.Extract(loaded.Raw, result.Operations, opts)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -439,11 +455,17 @@ Flags:
   --format text|json     output format (default text)
   --columns LIST         comma-separated columns: id,method,path,operationId,summary,tags (or "all")
   --tag NAME             filter by tag (case-insensitive, repeatable)
+  --method NAMES         filter by HTTP method (comma-separated or repeatable, case-insensitive)
+  --path-prefix /v1      keep only operations whose path starts with the prefix
+  --grep PATTERN         substring match against id, operationId, summary, description (case-insensitive)
+  --no-deprecated        drop deprecated operations
   --max-col-width N      truncate text cells to N runes with ellipsis (default 0 = no limit)
   --no-header            hide the header row in text output
   --no-color             disable ANSI colors in text output
   --no-cache             bypass the on-disk URL cache for this request
   --refresh-cache        ignore and overwrite any cached URL response
+
+Filters combine with AND across types and OR within each repeatable type.
 
 Caching:
   URL fetches are cached under $OPENAPI_EXTRACT_CACHE_DIR (default
@@ -453,6 +475,8 @@ Caching:
 Examples:
   openapi-extract list api.yaml --format json
   openapi-extract list api.yaml --tag Orders --tag Payments
+  openapi-extract list api.yaml --method GET,POST --path-prefix /v1/orders
+  openapi-extract list api.yaml --grep 'refund' --no-deprecated
   curl -s https://example.com/api.yaml | openapi-extract list - --max-col-width 60
 `))
 }
@@ -476,9 +500,12 @@ Output target (at least one required):
   --output FILE          write the mini spec to FILE
 
 Other flags:
-  --format yaml|json     output format (default yaml)
-  --strip-info-description   drop info.description from the mini spec
-  --keep-info-description    keep info.description (overrides the --stdout default)
+  --format yaml|json         output format (default yaml)
+  --keep-info-description    keep info.description (default: stripped)
+  --strip-info-description   explicit form of the default; kept for symmetry
+  --max-enum N               truncate enum arrays longer than N (0 = unlimited);
+                             writes x-enum-truncated: {kept, total} alongside
+  --drop-examples            remove example/examples fields at every depth
   --no-cache                 bypass the on-disk URL cache for this request
   --refresh-cache            ignore and overwrite any cached URL response
 
@@ -502,14 +529,12 @@ AI-friendly flow:
 `))
 }
 
-func resolveStripInfo(strip, keep, toStdout bool) bool {
+func resolveStripInfo(strip, keep bool) bool {
 	if keep {
 		return false
 	}
-	if strip {
-		return true
-	}
-	return toStdout
+	_ = strip
+	return true
 }
 
 type repeated []string
