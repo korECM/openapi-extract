@@ -670,9 +670,13 @@ func runTUI(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	if err := tui.Run(loaded.Raw, catalog.Build(loaded.Doc)); err != nil {
+	stdoutData, err := tui.Run(loaded.Raw, catalog.Build(loaded.Doc))
+	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
+	}
+	if len(stdoutData) > 0 {
+		stdout.Write(stdoutData)
 	}
 	return 0
 }
